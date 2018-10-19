@@ -21,7 +21,7 @@ task :publish => [:generate] do
 		system "mv #{tmp}/* ."
     system "mv /tmp/.git ."
 		message = "Site updated at #{Time.now.utc}"
-    system "echo www.badhombres.pro > CNAME"
+#    system "echo www.badhombres.pro > CNAME"
 		system "git add ."
 		system "git commit -am \"#{message}\""
 		system "git push origin gh-pages --force"
