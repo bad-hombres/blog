@@ -380,3 +380,9 @@ change
 
 Level 1 complete! Next up what happens when we cant execute code from the
 stack!!!!
+
+Update!!: You may have noticed previously that when the crash occured the ESP
+register was pointing to our NOP sled already. If the binary has a "jmp esp" in an
+executable area of memory you could have used the address of this jmp esp as the
+return address. This has the effect of making the exploit more reliable as the
+address of the shellcode no longer matters as ESP always points to our buffer
